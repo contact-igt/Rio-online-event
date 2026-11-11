@@ -1,47 +1,49 @@
 "use server";
 
-import { createLimiter } from "@/lib/auth/rate-limit";
-import { createClient } from "@/lib/supabase/server";
-import { finishUpload, startUpload, type Failure, type Finished, type Started } from "@/lib/upload/service";
-import { createUploadDeps, uploadsAvailable } from "@/lib/upload/server";
+import { completeVideoUpload, currentRegistration, startVideoUpload } from "@/lib/registration/express";
+import { codeFrom } from "@/lib/upload/api-codes";
+import { checkFile, type UploadErrorCode } from "@/lib/upload/rules";
 
-// Video upload for a registered entry. The parent is identified from their own signed-in session, never from the form;
-// the entry's owner, status and the registration window are re-checked inside the database. Nothing here logs, and no
-// result contains an object key, a secret or any child detail. The presigned URL in a result is a temporary bearer
-// credential for one object: it is returned to the browser that asked for it and nowhere else.
+// Video upload for the entry the parent's recovery cookie opens. The Express API is the authority: it checks the cookie, the CSRF token,
+// this site's Origin, the window, that the entry is a draft without a video, the type and the size, and later the stored object itself.
+// These actions only forward the request and turn the answer into a code the screen can explain. No result contains an object key, a secret
+// or any child detail. The upload URL in a result is a temporary credential for one object: it goes back only to the browser that asked.
 
-const startByUser = createLimiter(10, 10 * 60_000);
-const finishByUser = createLimiter(30, 10 * 60_000);
+export type Failure = { ok: false; code: UploadErrorCode };
+export type Started = { ok: true; uploadId: string; url: string; contentType: string; expiresAt: string };
+export type Finished = { ok: true };
 
-async function parent(): Promise<string | null> {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser(); // verified with Supabase, not just read from the cookie
-    return data.user?.id ?? null;
-  } catch {
-    return null;
-  }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The CSRF token for the entry the cookie opens, or null when there is none. */
+async function csrf(): Promise<string | null> {
+  return (await currentRegistration())?.csrfToken ?? null;
 }
 
-export async function requestVideoUpload(input: { submissionId: string; type: string; bytes: number; seconds: number | null }): Promise<Started | Failure> {
-  if (!uploadsAvailable()) return { ok: false, code: "unavailable" }; // switched off or not configured: nothing else runs
-  const owner = await parent();
-  if (!owner) return { ok: false, code: "notFound" };
-  if (!startByUser.hit(owner).allowed) return { ok: false, code: "tooMany" };
+export async function requestVideoUpload(input: { type: string; bytes: number }): Promise<Started | Failure> {
+  // The same cheap checks the browser made, so a hand-made call does not even reach the API.
+  const problem = checkFile({ type: String(input?.type ?? ""), bytes: Number(input?.bytes) });
+  if (problem) return { ok: false, code: problem };
   try {
-    return await startUpload(createUploadDeps(), { ownerId: owner, submissionId: input?.submissionId, meta: { type: input?.type, bytes: input?.bytes, seconds: input?.seconds } });
+    const token = await csrf();
+    if (!token) return { ok: false, code: "notFound" };
+    const reply = await startVideoUpload({ type: input.type, bytes: input.bytes }, token);
+    if (reply.status === 201 && reply.body) return { ok: true, ...reply.body.upload };
+    return { ok: false, code: codeFrom(reply) };
   } catch {
     return { ok: false, code: "unavailable" };
   }
 }
 
 export async function confirmVideoUpload(input: { uploadId: string }): Promise<Finished | Failure> {
-  if (!uploadsAvailable()) return { ok: false, code: "unavailable" };
-  const owner = await parent();
-  if (!owner) return { ok: false, code: "notFound" };
-  if (!finishByUser.hit(owner).allowed) return { ok: false, code: "tooMany" };
+  const id = String(input?.uploadId ?? "");
+  if (!UUID.test(id)) return { ok: false, code: "invalid" };
   try {
-    return await finishUpload(createUploadDeps(), { ownerId: owner, uploadId: input?.uploadId });
+    const token = await csrf();
+    if (!token) return { ok: false, code: "notFound" };
+    const reply = await completeVideoUpload(id, token);
+    if (reply.status === 200) return { ok: true };
+    return { ok: false, code: codeFrom(reply) };
   } catch {
     return { ok: false, code: "unavailable" };
   }

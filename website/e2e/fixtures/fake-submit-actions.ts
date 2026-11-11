@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-export async function submitEntry(input: Record<string, unknown>) {
+export async function submitEntry(input: Record<string, unknown> = {}) {
   (window.__submitCalls ??= []).push(input);
   const step = window.__submitScript?.shift();
   if (step === "throw") throw new Error("network down");

@@ -1,12 +1,14 @@
 import { Bilingual } from "@/components/auth/bilingual";
 import { reg, type Msg } from "@/lib/registration/messages";
-import { SubmitEntry, type SubmitDetails } from "./submit-entry";
+import type { ReactNode } from "react";
+import type { SubmitDetails } from "./submit-entry";
 import { UploadPanel } from "./upload-panel";
 
 // Video upload works only for a saved entry while registration is open, the bucket is configured and uploads are switched on;
 // otherwise it is shown disabled. Final submission works only for an UPLOADED entry while registration is open and final
-// submission is switched on (a separate switch, off by default); otherwise its button is disabled.
-export type UploadStep = { kind: "off" } | { kind: "on"; submissionId: string; hasVideo: boolean };
+// submission is switched on (a separate switch, off by default); otherwise its button is disabled. The submit step is passed in as a node
+// (not imported here), so a page without final submission never loads its code: the old one still talks to Supabase (rebuilt in Phase C).
+export type UploadStep = { kind: "off" } | { kind: "on"; hasVideo: boolean };
 export type SubmitStep = { kind: "off" } | ({ kind: "on" } & SubmitDetails);
 
 const disabledButton = "btn btn-outline w-full !border-dashed sm:w-auto";
@@ -26,7 +28,7 @@ function Disabled({ step }: { step: Msg }) {
   );
 }
 
-export function NextSteps({ upload, submit }: { upload: UploadStep; submit: SubmitStep }) {
+export function NextSteps({ upload, submit }: { upload: UploadStep; submit?: ReactNode }) {
   return (
     <section aria-labelledby="next-steps" className="card p-4 sm:p-6">
       <h2 id="next-steps" className="text-xl font-bold">
@@ -39,19 +41,19 @@ export function NextSteps({ upload, submit }: { upload: UploadStep; submit: Subm
               <p className="mb-2 font-display text-lg font-bold text-rio-navy">
                 <Bilingual m={reg.nextSteps.upload} />
               </p>
-              <UploadPanel key={upload.submissionId} submissionId={upload.submissionId} hasVideo={upload.hasVideo} />
+              <UploadPanel hasVideo={upload.hasVideo} />
             </>
           ) : (
             <Disabled step={reg.nextSteps.upload} />
           )}
         </li>
         <li>
-          {submit.kind === "on" ? (
+          {submit ? (
             <>
               <p className="mb-2 font-display text-lg font-bold text-rio-navy">
                 <Bilingual m={reg.nextSteps.submit} />
               </p>
-              <SubmitEntry key={submit.submissionId} {...submit} />
+              {submit}
             </>
           ) : (
             <Disabled step={reg.nextSteps.submit} />

@@ -38,6 +38,13 @@ export type RegistrationConfig = {
   /** How long a recovery code (and the cookie that carries it) stays valid. */
   tokenTtlMs: number;
 };
+export type R2Config = { accountId: string; bucket: string; accessKeyId: string; secretAccessKey: string };
+export type UploadsConfig = {
+  /** RIO_UPLOADS_ENABLED is exactly "yes". */
+  enabled: boolean;
+  /** The private bucket, or null unless all four R2 settings are present and well-formed. Secret: never log it. */
+  r2: R2Config | null;
+};
 export type Config = {
   env: "development" | "test" | "production";
   host: string;
@@ -49,6 +56,8 @@ export type Config = {
   database: DatabaseConfig | null;
   auth: AuthConfig;
   registration: RegistrationConfig;
+  /** Video uploads to the private R2 bucket. Available only when enabled AND configured; anything else means off (fail closed, no crash). */
+  uploads: UploadsConfig;
 };
 
 export class ConfigError extends Error {
@@ -120,6 +129,11 @@ const schema = z
     ARGON2_MEMORY_KIB: integer(8, 1_048_576, 65_536),
     ARGON2_PASSES: integer(1, 10, 3),
     SESSION_COOKIE_SAMESITE: z.enum(["strict", "lax", "none"]).default("strict"),
+    RIO_UPLOADS_ENABLED: z.string().max(10).optional(),
+    R2_ACCOUNT_ID: z.string().max(300).optional(),
+    R2_ACCESS_KEY_ID: z.string().max(300).optional(),
+    R2_SECRET_ACCESS_KEY: z.string().max(300).optional(),
+    R2_BUCKET_NAME: z.string().max(300).optional(),
   })
   .superRefine((env, ctx) => {
     const fail = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
@@ -175,6 +189,20 @@ const schema = z
     }
   });
 
+// Shapes only, enough to catch a missing, truncated or mis-pasted value. A value is never echoed.
+const R2_SHAPES = {
+  R2_ACCOUNT_ID: /^[0-9a-f]{32}$/i,
+  R2_ACCESS_KEY_ID: /^\S{16,128}$/,
+  R2_SECRET_ACCESS_KEY: /^\S{32,256}$/,
+  R2_BUCKET_NAME: /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/,
+} as const;
+
+function readR2(e: Partial<Record<keyof typeof R2_SHAPES, string | undefined>>): R2Config | null {
+  const v = (name: keyof typeof R2_SHAPES) => e[name]?.trim() ?? "";
+  if (!(Object.keys(R2_SHAPES) as (keyof typeof R2_SHAPES)[]).every((name) => R2_SHAPES[name].test(v(name)))) return null;
+  return { accountId: v("R2_ACCOUNT_ID"), bucket: v("R2_BUCKET_NAME"), accessKeyId: v("R2_ACCESS_KEY_ID"), secretAccessKey: v("R2_SECRET_ACCESS_KEY") };
+}
+
 export function loadConfig(source: Record<string, string | undefined>): Config {
   // An empty value counts as "not set" (hosting dashboards often leave blanks).
   const present = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ""));
@@ -212,5 +240,6 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
       publicOrigins: (parseOrigins(e.PUBLIC_ORIGINS) ?? []).filter((o): o is string => o !== null),
       tokenTtlMs: e.REGISTRATION_TOKEN_DAYS * 86_400_000,
     },
+    uploads: { enabled: e.RIO_UPLOADS_ENABLED === "yes", r2: readR2(e) },
   };
 }

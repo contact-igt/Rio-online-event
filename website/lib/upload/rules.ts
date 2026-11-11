@@ -5,7 +5,7 @@
 // video to be decoded, which only the browser does today. A server-side probe is a follow-up (see PROJECT_BRIEF.md).
 // Plain TypeScript with no path aliases so the browser tests can bundle it.
 
-export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // the owner's limit (2026-11-11); the API enforces the same
 export const MIN_VIDEO_BYTES = 100 * 1024; // anything smaller cannot be 30 seconds of video
 export const MIN_SECONDS = 30;
 export const MAX_SECONDS = 90;
@@ -37,6 +37,7 @@ export type UploadErrorCode =
   | "expired"
   | "missing"
   | "mismatch"
+  | "already"
   | "unavailable";
 
 /** What was declared about the video. The duration is in seconds, or null if the browser could not read it. */

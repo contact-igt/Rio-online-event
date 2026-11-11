@@ -3,6 +3,7 @@ import { writeAudit } from "../auth/audit.ts";
 import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
 import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
+import { videoKey, type VideoStore } from "../storage/r2.ts";
 
 export type AssignedEntryRow = {
   entryCode: string;
@@ -210,12 +211,16 @@ export async function getEntryForReview(db: Queryable, judgeId: number, entryCod
   };
 }
 
+export const PLAYBACK_SECONDS = 5 * 60;
+
 export async function mintPlaybackUrl(
   db: Queryable,
   now: Date,
   actor: { judgeId: number; requestId: string },
   entryCode: string,
+  store: VideoStore | null,
 ): Promise<{ ok: true; url: string; expiresInSeconds: number }> {
+  if (store === null) throw new AppError(503, "playback_unavailable", "Video playback is not available right now.");
   const result = await db.query<{
     id: unknown;
     object_key: string;
@@ -246,16 +251,10 @@ export async function mintPlaybackUrl(
     requestId: actor.requestId,
   });
 
-  // If R2/S3 integration is active in env, we can presign. If not, generate a safe media stream url or signed path.
-  const r2Url = process.env.R2_PLAYBACK_BASE_URL
-    ? `${process.env.R2_PLAYBACK_BASE_URL.replace(/\/$/, "")}/${objectKey}?token=${actor.requestId}&expires=300`
-    : `/api/v1/judge/videos/${objectKey}?expires=300`;
-
-  return {
-    ok: true,
-    url: r2Url,
-    expiresInSeconds: 300,
-  };
+  // A presigned GET of the checked copy (videos/<key>) from the private bucket, valid for five minutes. The bucket has no public domain, so
+  // this URL is the only way to the video, and it is minted only after the assignment check above and the audit row.
+  const url = await store.presignGet(videoKey(String(objectKey)), { expiresInSeconds: PLAYBACK_SECONDS });
+  return { ok: true, url, expiresInSeconds: PLAYBACK_SECONDS };
 }
 
 export async function saveScore(

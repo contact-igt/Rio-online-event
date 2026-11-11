@@ -132,6 +132,7 @@ export const reg = {
       videoInvalid: { ta: "இந்தக் கோப்பு சரியான வீடியோவாகத் தெரியவில்லை. MP4, MOV அல்லது WebM வீடியோவை மீண்டும் பதிவேற்றுங்கள்.", en: "This file does not look like a valid video. Upload an MP4, MOV or WebM video again." },
       videoDuration: { ta: "வீடியோவின் நீளம் 30 முதல் 90 வினாடிகளுக்குள் இல்லை. மீண்டும் பதிவேற்றுங்கள்.", en: "The video is not between 30 and 90 seconds long. Upload it again." },
       consent: { ta: "பெற்றோர் ஒப்புதல் பதிவு முழுமையாக இல்லை. மருத்துவமனையைத் தொடர்பு கொள்ளுங்கள்.", en: "The guardian consent record is incomplete. Please contact the hospital." },
+      answers: { ta: "போட்டிக் கேள்விகளுக்கான பதில்களைச் சரிபார்த்து மீண்டும் முயலுங்கள்.", en: "Check your answers to the competition questions and try again." },
       duplicate: { ta: "இந்தக் குழந்தைக்கு ஏற்கெனவே ஒரு சமர்ப்பிக்கப்பட்ட பதிவு உள்ளது.", en: "This child already has a submitted entry." },
       tooMany: { ta: "பல முறை முயன்றுவிட்டீர்கள். சிறிது நேரம் கழித்து மீண்டும் முயலுங்கள்.", en: "Too many attempts. Wait a few minutes and try again." },
       invalid: { ta: "இந்தக் கோரிக்கையை ஏற்க முடியவில்லை.", en: "We cannot accept this request." },
@@ -142,8 +143,8 @@ export const reg = {
   // Video upload (M4A). Tamil strings are mine and need the native-speaker review (D13).
   upload: {
     rules: {
-      ta: "30 முதல் 90 வினாடிகள், அதிகபட்சம் 100 MB. MP4, MOV அல்லது WebM வடிவம்.",
-      en: "30 to 90 seconds, up to 100 MB. MP4, MOV or WebM.",
+      ta: "30 முதல் 90 வினாடிகள், அதிகபட்சம் 50 MB. MP4, MOV அல்லது WebM வடிவம். ஒரு பதிவுக்கு ஒரு வீடியோ மட்டுமே; பதிவேற்றிய பின் மாற்ற முடியாது.",
+      en: "30 to 90 seconds, up to 50 MB. MP4, MOV or WebM. One video per entry: it cannot be changed after it is uploaded.",
     },
     choose: { ta: "வீடியோவைத் தேர்ந்தெடுக்கவும்", en: "Choose a video" },
     chooseOther: { ta: "வேறு வீடியோவைத் தேர்ந்தெடுக்கவும்", en: "Choose a different video" },
@@ -155,18 +156,18 @@ export const reg = {
     retry: { ta: "மீண்டும் முயல்க", en: "Try again" },
     done: { ta: "வீடியோ பதிவேற்றப்பட்டது", en: "Video uploaded" },
     doneBody: {
-      ta: "உங்கள் வீடியோ தனிப்பட்ட முறையில் சேமிக்கப்பட்டது. இறுதிச் சமர்ப்பிப்பு அடுத்த கட்டத்தில் வரும்.",
-      en: "Your video is stored privately. Final submission comes in the next step.",
+      ta: "உங்கள் வீடியோ தனிப்பட்ட முறையில் சேமிக்கப்பட்டது. இது இறுதியானது, மாற்ற முடியாது.",
+      en: "Your video is stored privately. It is final and cannot be changed.",
     },
     detailsFixed: {
       ta: "வீடியோ பதிவேற்றிய பிறகு விவரங்களை மாற்ற முடியாது. வீடியோவை மட்டும் மாற்றலாம்.",
       en: "Details cannot be edited after a video is uploaded. You can still replace the video.",
     },
-    hasVideo: { ta: "இந்தப் பதிவுக்கு ஒரு வீடியோ உள்ளது. வேறொன்றைப் பதிவேற்றினால் அது மாற்றப்படும்.", en: "This entry has a video. Uploading another one replaces it." },
+    hasVideo: { ta: "இந்தப் பதிவுக்கு ஒரு வீடியோ உள்ளது. இது இறுதியானது, மாற்ற முடியாது.", en: "This entry has its video. It is final and cannot be changed." },
     unavailable: { ta: "வீடியோ பதிவேற்றம் தற்போது கிடைக்கவில்லை.", en: "Video upload is not available right now." },
     problems: {
       type: { ta: "MP4, MOV அல்லது WebM வீடியோவைத் தேர்ந்தெடுங்கள்.", en: "Choose an MP4, MOV or WebM video." },
-      tooBig: { ta: "வீடியோ 100 MB-க்கு மேல் உள்ளது. சிறிய கோப்பைத் தேர்ந்தெடுங்கள் (720p போதுமானது).", en: "The video is over 100 MB. Choose a smaller file (720p is enough)." },
+      tooBig: { ta: "வீடியோ 50 MB-க்கு மேல் உள்ளது. சிறிய கோப்பைத் தேர்ந்தெடுங்கள் (720p போதுமானது).", en: "The video is over 50 MB. Choose a smaller file (720p is enough)." },
       tooSmall: { ta: "வீடியோ மிகவும் சிறியது. 30 வினாடிகளுக்கு மேற்பட்ட வீடியோவைத் தேர்ந்தெடுங்கள்.", en: "The video file is too small. Choose a video of at least 30 seconds." },
       tooShort: { ta: "வீடியோ 30 வினாடிகளுக்குக் குறைவு. 30 முதல் 90 வினாடிகள் இருக்க வேண்டும்.", en: "The video is shorter than 30 seconds. It must be 30 to 90 seconds." },
       tooLong: { ta: "வீடியோ 90 வினாடிகளுக்கு மேல் உள்ளது. 30 முதல் 90 வினாடிகள் இருக்க வேண்டும்.", en: "The video is longer than 90 seconds. It must be 30 to 90 seconds." },
@@ -182,6 +183,7 @@ export const reg = {
       expired: { ta: "பதிவேற்ற நேரம் முடிந்துவிட்டது. மீண்டும் தொடங்குங்கள்.", en: "The upload took too long. Start again." },
       missing: { ta: "பதிவேற்றம் முடியவில்லை. மீண்டும் முயலுங்கள்.", en: "The upload did not finish. Try again." },
       mismatch: { ta: "பதிவேற்றிய கோப்பு தேர்ந்தெடுத்த கோப்புடன் பொருந்தவில்லை. மீண்டும் முயலுங்கள்.", en: "The uploaded file did not match the one you chose. Try again." },
+      already: { ta: "இந்தப் பதிவுக்கு ஏற்கெனவே வீடியோ உள்ளது. அதை மாற்ற முடியாது.", en: "This entry already has its video. It cannot be changed." },
       network: { ta: "இணைப்பு துண்டிக்கப்பட்டது. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலுங்கள்.", en: "The connection dropped. Check your internet and try again." },
       unavailable: { ta: "வீடியோ பதிவேற்றம் தற்போது கிடைக்கவில்லை. சிறிது நேரம் கழித்து மீண்டும் முயலுங்கள்.", en: "Video upload is unavailable right now. Try again in a moment." },
     },

@@ -25,6 +25,8 @@ const state: AppState = { shuttingDown: false };
 // The pool opens connections on first use, so a database that is down shows up as sanitised errors on the staff routes, not as a crash here.
 const db = config.database ? openDatabase(config.database) : undefined;
 if (db && config.registration.publicOrigins.length === 0) logger.warn("public_origins_not_configured"); // registration changes will be refused until PUBLIC_ORIGINS is set
+// Names only, never values: uploads and judge playback stay off until all four R2 settings are present and well-formed.
+if (config.uploads.enabled && !config.uploads.r2) logger.warn("video_uploads_enabled_but_r2_not_configured");
 // Fail closed on the wrong server or the wrong database. An unreachable database is not fatal here (see above); a reachable but wrong one is.
 if (db && config.database) {
   try {

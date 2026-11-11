@@ -64,8 +64,8 @@ describe("uploadStep: what the registration page shows", () => {
   });
 
   it("flag on and registration open: an eligible entry gets the working panel", () => {
-    expect(uploadStep({ open: true, current: draft }, on)).toEqual({ kind: "on", submissionId: draft.id, hasVideo: false });
-    expect(uploadStep({ open: true, current: { ...draft, status: "uploaded" } }, on)).toEqual({ kind: "on", submissionId: draft.id, hasVideo: true });
+    expect(uploadStep({ open: true, current: draft }, on)).toEqual({ kind: "on", hasVideo: false });
+    expect(uploadStep({ open: true, current: { ...draft, status: "uploaded" } }, on)).toEqual({ kind: "on", hasVideo: true });
   });
 
   it("flag on but not eligible: registration closed, no entry chosen, or the entry is finalized or withdrawn", () => {

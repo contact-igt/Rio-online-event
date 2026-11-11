@@ -41,7 +41,7 @@ export function submitStep(
 ): SubmitStep {
   const { open, current, event } = input;
   if (!open || !current || current.status !== "uploaded" || !finalizeAvailable(env)) return { kind: "off" };
-  return { kind: "on", submissionId: current.id, slug: event.slug, childName: current.childName, childAge: current.childAge, eventNameTa: event.nameTa, eventNameEn: event.nameEn, mediaConsent: current.mediaConsent };
+  return { kind: "on", childName: current.childName, childAge: current.childAge, eventNameTa: event.nameTa, eventNameEn: event.nameEn, mediaConsent: current.mediaConsent };
 }
 
 type CheckRow = { upload_id: string | null; bytes: number | string | null; content_type: string | null; etag: string | null; event_id: number | string; consent_version: string; already: boolean };

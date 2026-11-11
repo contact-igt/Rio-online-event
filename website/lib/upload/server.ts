@@ -31,7 +31,7 @@ export function uploadStep(input: { open: boolean; current: { id: string; status
   const { open, current } = input;
   if (!open || !current || !uploadsAvailable(env)) return { kind: "off" };
   if (current.status !== "draft" && current.status !== "uploaded") return { kind: "off" };
-  return { kind: "on", submissionId: current.id, hasVideo: current.status === "uploaded" };
+  return { kind: "on", hasVideo: current.status === "uploaded" };
 }
 
 type Row = { upload_id: string; expires_at: string };

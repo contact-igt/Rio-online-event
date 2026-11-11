@@ -2158,3 +2158,38 @@ Live, non-mutating probes of Railway (`/health` 200, `/events` 200 with 0 compet
 2. Commit and deploy the backend working tree (Super Admin role, registrations and results routes). Not done here.
 3. Decide how production competitions are created (the seed refuses production; no admin screen creates them).
 4. `.env.example` files hold names and placeholders only; keep the real URL in `.env.local`.
+
+## 51. Express video upload, Phase A: backend (2026-11-11), local only
+
+**Owner decisions (2026-11-11):** maximum **50 MB** (not 100 MB); upload URL valid **10 minutes** (brief said ≤ 15); a **single PUT**, no multipart or resume (supersedes NFR4/R4 for this event); **one video per entry, final**: once checked and attached it cannot be replaced. A failed or interrupted upload may be started again while no video is attached.
+
+### 51.1 Built
+- `src/storage/r2.ts`: the private bucket (ported from `website/lib/storage/object-store.ts`): presigned PUT (Content-Type signed), presigned GET, HEAD, conditional copy, delete. Keys `pending/<uuid>` and `videos/<uuid>`.
+- `src/registration/video.ts` and two routes (cookie + CSRF + `PUBLIC_ORIGINS`): `POST /registrations/current/video-uploads` (type mp4/quicktime/webm, 100 KB to 50 MB; window open; draft; no video yet; earlier unfinished upload abandoned; 10 per hour per entry) and `POST /registrations/current/video-uploads/:uploadId/complete` (upload must belong to the caller's entry, else 404; HEAD must match the declared size and type, else rejected and removed; copy to `videos/` only if the ETag is unchanged; attach; audit `registration.video_upload_started` / `registration.video_uploaded`, labels only). The parent view gains `video`; public settings gain `videoUploads`.
+- Config: `RIO_UPLOADS_ENABLED` (exactly `yes`) and `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. Missing or malformed values mean off, never a crash; start-up logs `video_uploads_enabled_but_r2_not_configured` (name only).
+- **Security fix, judge playback:** `mintPlaybackUrl` returned a made-up `R2_PLAYBACK_BASE_URL/<key>?token=<requestId>` or a non-existent `/api/v1/judge/videos/<key>`. It is now a 5-minute presigned GET of `videos/<key>`; 503 when the bucket is not configured.
+- Dependency: `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (request signing would be several hundred lines; the website already uses them).
+
+### 51.2 Evidence (SQLite; MySQL not run: `RIO_TEST_DATABASE_URL` unset)
+`src/registration/video.test.ts`: 24 tests, with a fake bucket. Mutation check: raising the cap to 100 MB, or removing the one-video check, each fails a test. `npm run build` passes. Whole suite: 909 pass; the failures are not from this module (loosened `consent.ts` in the working tree, missing env example files, `judges.test.ts`, `seed-events.test.ts` still expecting six competitions).
+
+### 51.3 Not done (next phases)
+- Phase B: website upload panel wired to these routes (the register page still shows the fixed "later stage" card); CSP `connect-src` for the R2 host.
+- Phase C: final submission (video duration 30-90 s check, `held` for a flagged duplicate, lock).
+- Phase D (needs owner approval at each step): Railway variables, bucket CORS for the website origin (PUT only), lifecycle rule for `pending/` (1 day), confirm no public domain, one controlled real upload.
+- Optional: lower the database's own `declared_bytes` ceiling from 100 MB to 50 MB by migration (today the 50 MB rule is enforced by the API).
+
+### 51.4 Phase B: website wired (2026-11-11), local only
+- `video-actions.ts` now calls the Express routes (entry from the recovery cookie, CSRF from `/registrations/current`); the Supabase path is no longer used by the page. Error codes mapped in `lib/upload/api-codes.ts` (new `already` for the one-video rule).
+- Limit 50 MB in `lib/upload/rules.ts` and every message; the upload panel shows an attached video as final, with no "choose another".
+- The register page renders the real `NextSteps` upload step (on when the API's `videoUploads` is true or a video is attached; otherwise "Not open yet"); final submission stays off (Phase C).
+- CSP: unchanged code; the website needs `RIO_UPLOADS_ENABLED=yes` and `R2_ACCOUNT_ID` (not secret) at build time so `connect-src` allows the bucket host.
+- Evidence: website typecheck, lint, build pass; unit tests pass except the missing `.env.example` check; `e2e/upload-panel.spec.ts` 32/32 (360/390/768/1440 px, no horizontal scroll, controls ≥ 44 px).
+- **Owner decision (2026-11-11): one-time registration.** The client wants a parent to do everything in one sitting: fill in the details, upload the video, submit. No recovery code is shown and there is no way to reopen an entry later; the owner removed the "Draft saved" code notice and the recovery form from `register/page.tsx` on purpose. The API's registration cookie still carries the parent from saving the details to uploading and submitting in the same browser. Left over, to remove: the `rio_recovery_notice` cookie set by `saveDraft`, `components/registration/recovery-form.tsx`, and the API's recovery route (if the owner wants it gone server-side too).
+
+### 51.5 Phase C: final submission (2026-11-11), local only
+- API `POST /registrations/current/submit` (`{ confirm: true }`, cookie + CSRF + `PUBLIC_ORIGINS`): window open; uploads and bucket available; draft; guardian consent recorded; every required question answered; one checked video; the stored copy unchanged (size, type, ETag); `inspect.ts` (ported from the website with its 15 tests) reads a few byte ranges and checks the container, a video track and a declared length of 30 to 90 s (± 1 s; a browser-recorded WebM without a declared length passes on the browser's check). Then one transaction: answer wording snapshotted, entry `finalized`, or `held` with a `duplicate_reviews` row when the same child, mobile and competition already has a submitted entry (the parent sees "submitted" either way). Audit `registration.submitted` (outcome only). A repeated press answers success.
+- **Owner decision (confirmed 2026-11-11):** a video refused at submission (wrong length or not a real video) is marked `deleted` and removed, so the parent can upload a correct one. A valid video still cannot be replaced.
+- Website: `submit-actions.ts` calls the API; `SubmitEntry` (review, explicit confirm, one request) appears once the video is attached; a submitted entry shows "Entry submitted". The Supabase confirmation e-mail is no longer queued (e-mail is a later module).
+- Evidence: backend `video.test.ts` 32/32 (8 submission tests; disabling the length check fails 2), `inspect.test.ts` 15/15, build passes; website typecheck, lint, build pass, unit 431/432 (missing `.env.example`), `upload-panel.spec.ts` + `submit-entry.spec.ts` 60/60.
+- Not done: Phase D (R2 on Railway and Vercel, bucket CORS, lifecycle rule, one controlled real upload); recovery-code leftovers (`rio_recovery_notice` cookie in `saveDraft`, `recovery-form.tsx`, the API's recover route).

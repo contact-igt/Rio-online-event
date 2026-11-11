@@ -2,6 +2,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { requireStaff, staffOf } from "../auth/middleware.ts";
 import type { AuthDeps } from "../auth/staff.ts";
+import type { VideoStore } from "../storage/r2.ts";
 import { AppError } from "../http/errors.ts";
 import { requestIdOf } from "../http/request-id.ts";
 import { getEntryForReview, listAssignedEntries, mintPlaybackUrl, saveScore, saveScoreSchema } from "./entries.ts";
@@ -23,7 +24,8 @@ function parse<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
   throw new AppError(400, "invalid_request", "Validation error");
 }
 
-export function judgeRouter(deps: AuthDeps): Router {
+/** `video` is the private bucket, or null when it is not configured (playback then answers 503). */
+export function judgeRouter(deps: AuthDeps, video: VideoStore | null): Router {
   const router = Router();
   const judge = requireStaff(deps, { roles: ["judge"] });
   const now = () => deps.now();
@@ -48,7 +50,7 @@ export function judgeRouter(deps: AuthDeps): Router {
 
   router.post("/entries/:entryCode/playback", ...judge, guarded(async (req, res) => {
     const code = entryCodeOf(req.params.entryCode);
-    res.json(await mintPlaybackUrl(deps.db, now(), actor(res), code));
+    res.json(await mintPlaybackUrl(deps.db, now(), actor(res), code, video));
   }));
 
   router.put("/entries/:entryCode/score", ...judge, guarded(async (req, res) => {

@@ -12,6 +12,7 @@ import { canonicalCode, newEntryReference, newRecoveryCode } from "./codes.ts";
 import { isApprovedGuardianConsentVersion } from "./consent.ts";
 import { nameKey } from "./normalize.ts";
 import { ValidationFailed, type CreateInput, type PatchInput } from "./schemas.ts";
+import { videoStoreFor, type VideoStore } from "../storage/r2.ts";
 
 // The registration life cycle for a parent with no account:
 //
@@ -23,8 +24,13 @@ import { ValidationFailed, type CreateInput, type PatchInput } from "./schemas.t
 //
 // Nothing here ever writes a name, a mobile number, an e-mail address, an address or a code into the audit log or an error.
 
-export type RegistrationDeps = { db: DatabaseAdapter; config: Config; now: () => Date; limiter: RateLimiter };
-export const registrationDeps = (db: DatabaseAdapter, config: Config, now: () => Date = () => new Date()): RegistrationDeps => ({ db, config, now, limiter: createRateLimiter(db) });
+/** `video` is the private bucket, or null when it is not configured (uploads then stay off whatever the switch says). */
+export type RegistrationDeps = { db: DatabaseAdapter; config: Config; now: () => Date; limiter: RateLimiter; video: VideoStore | null };
+export const registrationDeps = (db: DatabaseAdapter, config: Config, now: () => Date = () => new Date(), video: VideoStore | null = videoStoreFor(config)): RegistrationDeps =>
+  ({ db, config, now, limiter: createRateLimiter(db), video });
+
+/** Parents may upload only when the switch is exactly "yes" AND the bucket is configured. */
+export const uploadsAvailable = (deps: RegistrationDeps): boolean => deps.config.uploads.enabled && deps.video !== null;
 
 export const REGISTRATION_LIMITS = {
   createPerIp: { max: 15, windowMs: 60 * 60_000 },
@@ -49,7 +55,7 @@ const iso = (value: unknown): string | null => (value === null || value === unde
 type SettingsRow = { submissions_open_at: unknown; submissions_close_at: unknown; guardian_consent_version: string | null; media_consent_version: string | null };
 type Settings = { opensAt: Date | null; closesAt: Date | null; guardianConsentVersion: string | null; mediaConsentVersion: string | null };
 
-async function loadSettings(db: Queryable): Promise<Settings> {
+export async function loadSettings(db: Queryable): Promise<Settings> {
   const row = (await db.query<SettingsRow>("SELECT submissions_open_at, submissions_close_at, guardian_consent_version, media_consent_version FROM event_settings WHERE id = 1")).rows[0];
   return {
     opensAt: row?.submissions_open_at ? asDate(row.submissions_open_at) : null,
@@ -60,7 +66,7 @@ async function loadSettings(db: Queryable): Promise<Settings> {
 }
 
 /** Open only when an administrator has set a window AND a consent version, and now is inside the window. Anything unset means closed. */
-const isOpen = (s: Settings, now: Date): boolean =>
+export const isOpen = (s: Settings, now: Date): boolean =>
   s.opensAt !== null && s.closesAt !== null && isApprovedGuardianConsentVersion(s.guardianConsentVersion) && now.getTime() >= s.opensAt.getTime() && now.getTime() < s.closesAt.getTime();
 
 export type PublicSettings = {
@@ -69,6 +75,8 @@ export type PublicSettings = {
   closesAt: string | null;
   guardianConsentVersion: string | null;
   mediaConsentVersion: string | null;
+  /** True when a parent with a draft could upload a video now: registration open, the switch on, the bucket configured. */
+  videoUploads: boolean;
   serverTime: string;
 };
 export async function publicSettings(deps: RegistrationDeps): Promise<PublicSettings> {
@@ -80,6 +88,7 @@ export async function publicSettings(deps: RegistrationDeps): Promise<PublicSett
     closesAt: s.closesAt?.toISOString() ?? null,
     guardianConsentVersion: s.guardianConsentVersion,
     mediaConsentVersion: s.mediaConsentVersion,
+    videoUploads: isOpen(s, now) && uploadsAvailable(deps),
     serverTime: now.toISOString(),
   };
 }
@@ -163,6 +172,8 @@ export type RegistrationView = {
   questionSet: { version: number; questions: ReturnType<typeof publicQuestion>[] };
   answers: Record<string, AnswerValue>;
   missingRequired: string[];
+  /** The entry's one checked video, if it has one. No object key or URL is ever part of this. */
+  video: { uploaded: boolean; bytes: number | null; contentType: string | null; uploadedAt: string | null };
   createdAt: string | null;
   updatedAt: string | null;
   codeExpiresAt: string;
@@ -193,6 +204,7 @@ export async function loadView(db: Queryable, access: Pick<Access, "submissionId
     )
   ).rows;
   const answers: Record<string, AnswerValue> = {};
+  const video = (await db.query<{ verified_bytes: number | string; content_type: string; verified_at: unknown }>("SELECT verified_bytes, content_type, verified_at FROM video_uploads WHERE submission_id = ? AND status = 'verified'", [access.submissionId])).rows[0];
   for (const a of answerRows) answers[a.k] = a.question_type === "number" ? Number(a.value_number) : a.question_type === "checkboxes" ? (json(a.value_json) as string[]) : (a.value_text ?? "");
   return {
     reference: s.entry_code,
@@ -208,6 +220,7 @@ export async function loadView(db: Queryable, access: Pick<Access, "submissionId
     questionSet: { version: Number(s.set_version), questions: questions.map(publicQuestion) },
     answers,
     missingRequired: missingRequired(questions, new Set(Object.keys(answers))),
+    video: video ? { uploaded: true, bytes: Number(video.verified_bytes), contentType: video.content_type, uploadedAt: iso(video.verified_at) } : { uploaded: false, bytes: null, contentType: null, uploadedAt: null },
     createdAt: iso(s.created_at),
     updatedAt: iso(s.updated_at),
     codeExpiresAt: access.expiresAt.toISOString(),
@@ -262,10 +275,10 @@ function checkAnswers(questions: readonly Question[], given: Record<string, unkn
 
 // ---- create --------------------------------------------------------------------------------------------------------------------------------------
 
-const closed = () => new AppError(403, "registration_closed", "Registration is not open.");
+export const closed = () => new AppError(403, "registration_closed", "Registration is not open.");
 const consentChanged = () => new AppError(409, "consent_version_changed", "The consent wording has changed. Read it again.");
 const unavailable = () => new AppError(409, "competition_unavailable", "This competition cannot take registrations now.");
-const notEditable = () => new AppError(409, "not_editable", "This entry can no longer be changed.");
+export const notEditable = () => new AppError(409, "not_editable", "This entry can no longer be changed.");
 
 export type Created = { access: Access; reference: string };
 

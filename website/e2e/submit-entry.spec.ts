@@ -78,14 +78,14 @@ test.describe("the submit step", () => {
     expect(await calls(page)).toEqual([]);
   });
 
-  test("confirming sends exactly one request carrying only the entry and the competition, then shows the saved state", async ({ page }) => {
+  test("confirming sends exactly one request carrying nothing from the page (the entry comes from the cookie), then shows the saved state", async ({ page }) => {
     await open(page);
     await toConfirm(page);
     await confirmBtn(page).click();
     await expect(page.getByRole("status")).toContainText("Entry submitted");
     await expect(page.getByRole("status")).toContainText("Your entry is final.");
     await expect(page.getByRole("status")).toContainText("Submitted");
-    expect(await calls(page)).toEqual([{ submissionId: "bbbbbbbb-0000-4000-8000-0000000000b1", slug: "kutti-pesalar" }]);
+    expect(await calls(page)).toEqual([{}]);
     expect(await page.evaluate(() => window.__refreshed)).toBe(1); // the page is refreshed to show the submitted entry
   });
 
@@ -139,7 +139,8 @@ test.describe("failures keep the entry as it was, explain what happened in both 
       await expect(error).toContainText(message);
       await expect(error).toContainText(/[஀-௿]/);
       await expect(page.getByRole("status")).toHaveCount(0); // no success is shown
-      expect(await page.evaluate(() => window.__refreshed ?? 0)).toBe(0); // the page was not refreshed to a submitted state
+      // A video refused at submission has been removed by the API, so the page refreshes to bring the upload step back; otherwise nothing changes.
+      expect(await page.evaluate(() => window.__refreshed ?? 0)).toBe(code === "videoInvalid" || code === "videoDuration" ? 1 : 0);
       await expect(page.getByRole("button", { name: /Try again/ })).toBeEnabled();
     });
   }
