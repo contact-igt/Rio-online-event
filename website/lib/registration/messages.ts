@@ -193,6 +193,9 @@ export const reg = {
       en: "Use letters only (no numbers), up to 80 characters.",
     },
     age: { ta: "3 முதல் 12 வரையிலான வயதைத் தேர்ந்தெடுங்கள்.", en: "Choose an age from 3 to 12." },
+    answer: { ta: "போட்டிக் கேள்விகளுக்கான பதில்களைச் சரிபார்த்து மீண்டும் முயலுங்கள்.", en: "Check your answers to the competition questions and try again." },
+    answerRequired: { ta: "இந்தக் கேள்விக்குப் பதில் அளியுங்கள்.", en: "Please answer this question." },
+    answerInvalid: { ta: "இந்தப் பதிலைச் சரிபார்த்து மீண்டும் முயலுங்கள்.", en: "Check this answer and try again." },
     ageBand: (min: number, max: number): Msg => ({
       ta: `இந்தப் போட்டிக்கு ${min}–${max} வயது மட்டுமே தகுதி.`,
       en: `Only ages ${min}–${max} can enter this competition.`,

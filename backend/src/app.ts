@@ -7,6 +7,7 @@ import type { DatabaseAdapter } from "./db/adapter.ts";
 import { cors } from "./http/cors.ts";
 import { registrationRouter } from "./registration/routes.ts";
 import { registrationDeps } from "./registration/service.ts";
+import { resultsRouter } from "./results/public.ts";
 import type { Logger } from "./logger.ts";
 import { errorHandler, notFoundHandler } from "./http/errors.ts";
 import { healthRouter } from "./http/health.ts";
@@ -65,6 +66,7 @@ export function createApp(deps: AppDeps): Express {
     app.use("/api/v1/staff", staffRouter(auth));
     app.use("/api/v1/admin", adminRouter(auth));
     app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now)));
+    app.use("/api/v1", resultsRouter(deps.db, deps.now ?? (() => new Date())));
     deps.mount?.(app, auth);
   }
 

@@ -34,7 +34,7 @@ async function main(): Promise<number> {
     }
     const ready = await checkReadiness(db, await loadMigrations(`${ROOT}/${migrationFolder(database)}`));
     if (!ready.ready) {
-      out(`not ready: ${ready.reason}. Run npm run db:migrate first. Nothing was written.`);
+      out(`not ready: ${ready.reason}. Run npm run migrate first. Nothing was written.`);
       return 1;
     }
     out("migrations: every migration is applied");

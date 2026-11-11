@@ -85,9 +85,9 @@ export async function publicSettings(deps: RegistrationDeps): Promise<PublicSett
 
 type QuestionRow = {
   id: number | string; question_set_id: number | string; position: number; question_key: string; type: QuestionType; prompt_ta: string; prompt_en: string;
-  help_ta: string | null; help_en: string | null; required: number; options_json: unknown; max_length: number | null; min_number: number | null; max_number: number | null;
+  help_ta: string | null; help_en: string | null; required: number; options_json: unknown; max_length: number | null; min_number: number | null; max_number: number | null; min_choices: number | null; max_choices: number | null;
 };
-const QUESTION_COLUMNS = "id, question_set_id, position, question_key, type, prompt_ta, prompt_en, help_ta, help_en, required, options_json, max_length, min_number, max_number";
+const QUESTION_COLUMNS = "id, question_set_id, position, question_key, type, prompt_ta, prompt_en, help_ta, help_en, required, options_json, max_length, min_number, max_number, min_choices, max_choices";
 const toQuestion = (r: QuestionRow): Question => ({
   id: Number(r.id),
   key: r.question_key,
@@ -102,11 +102,13 @@ const toQuestion = (r: QuestionRow): Question => ({
   maxLength: r.max_length === null ? null : Number(r.max_length),
   minNumber: r.min_number === null ? null : Number(r.min_number),
   maxNumber: r.max_number === null ? null : Number(r.max_number),
+  minChoices: r.min_choices === null || r.min_choices === undefined ? null : Number(r.min_choices),
+  maxChoices: r.max_choices === null || r.max_choices === undefined ? null : Number(r.max_choices),
 });
 /** The question as the parent sees it: no database ids. */
 const publicQuestion = (q: Question) => ({
   key: q.key, type: q.type, position: q.position, promptTa: q.promptTa, promptEn: q.promptEn, helpTa: q.helpTa, helpEn: q.helpEn,
-  required: q.required, options: q.options, maxLength: q.maxLength, minNumber: q.minNumber, maxNumber: q.maxNumber,
+  required: q.required, options: q.options, maxLength: q.maxLength, minNumber: q.minNumber, maxNumber: q.maxNumber, minChoices: q.minChoices, maxChoices: q.maxChoices,
 });
 
 export type PublicEvent = { slug: string; nameTa: string; nameEn: string; minAge: number; maxAge: number; questionSet: { version: number; questions: ReturnType<typeof publicQuestion>[] } | null };
@@ -236,6 +238,27 @@ async function flagDuplicate(q: Queryable, now: Date, entry: { id: number; event
   await writeAudit(q, now, { actorType: "public", action: "registration.duplicate_flagged", entityType: "submission", entityId: entry.id, requestId, details: { reason: "same_child_mobile_event" } });
 }
 
+// ---- answers ------------------------------------------------------------------------------------------------------------------------------------
+
+type AnswerWrite = { question: Question; value: AnswerValue | null };
+
+/** Checks each answer against the question of the entry's own (published) set. Unknown keys and invalid values are reported by field; nothing typed is echoed. */
+function checkAnswers(questions: readonly Question[], given: Record<string, unknown>): { writes: AnswerWrite[]; problems: { field: string; problem: string }[] } {
+  const writes: AnswerWrite[] = [];
+  const problems: { field: string; problem: string }[] = [];
+  for (const [key, raw] of Object.entries(given)) {
+    const question = questions.find((q) => q.key === key);
+    if (!question) {
+      problems.push({ field: `answers.${key}`, problem: "unknown_question" });
+      continue;
+    }
+    const checked = checkAnswer(question, raw);
+    if (checked.ok) writes.push({ question, value: checked.value });
+    else problems.push({ field: `answers.${key}`, problem: checked.problem });
+  }
+  return { writes, problems };
+}
+
 // ---- create --------------------------------------------------------------------------------------------------------------------------------------
 
 const closed = () => new AppError(403, "registration_closed", "Registration is not open.");
@@ -263,6 +286,9 @@ export async function createRegistration(deps: RegistrationDeps, input: CreateIn
   if (input.childAge < Number(event.min_age) || input.childAge > Number(event.max_age)) throw new ValidationFailed([{ field: "childAge", problem: "out_of_range" }]);
   const set = (await db.query<{ id: number | string }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [Number(event.id)])).rows[0];
   if (!set) throw unavailable();
+  // The answers are checked against the questions of the set the entry is bound to, before anything is written.
+  const first = input.answers ? checkAnswers(await loadQuestions(db, Number(set.id)), input.answers) : { writes: [], problems: [] };
+  if (first.problems.length > 0) throw new ValidationFailed(first.problems);
 
   const code = newRecoveryCode();
   const expiresAt = new Date(now.getTime() + deps.config.registration.tokenTtlMs);
@@ -292,6 +318,7 @@ export async function createRegistration(deps: RegistrationDeps, input: CreateIn
       }
       const id = Number((await tx.query<{ id: number | string }>("SELECT id FROM submissions WHERE entry_code = ?", [reference])).rows[0]!.id);
       await tx.query("INSERT INTO registration_recovery (submission_id, token_sha256, created_at, expires_at) VALUES (?, ?, ?, ?)", [id, sha256Hex(code), now, expiresAt]);
+      for (const { question, value } of first.writes) await writeAnswer(tx, db.dialect, id, Number(set.id), question, value, now);
       await writeAudit(tx, now, {
         actorType: "public", action: "registration.created", entityType: "submission", entityId: id, requestId: ctx.requestId,
         details: { event_id: Number(event.id), media_consent: input.mediaConsent ? (input.mediaConsent.granted ? "granted" : "declined") : "not_asked" },
@@ -370,19 +397,11 @@ export async function updateRegistration(deps: RegistrationDeps, access: Access,
     }
   }
 
-  const writes: { question: Question; value: AnswerValue | null }[] = [];
+  let writes: AnswerWrite[] = [];
   if (patch.answers !== undefined) {
-    const questions = await loadQuestions(db, Number(entry.question_set_id));
-    for (const [key, raw] of Object.entries(patch.answers)) {
-      const question = questions.find((q) => q.key === key);
-      if (!question) {
-        problems.push({ field: `answers.${key}`, problem: "unknown_question" });
-        continue;
-      }
-      const checked = checkAnswer(question, raw);
-      if (checked.ok) writes.push({ question, value: checked.value });
-      else problems.push({ field: `answers.${key}`, problem: checked.problem });
-    }
+    const result = checkAnswers(await loadQuestions(db, Number(entry.question_set_id)), patch.answers);
+    writes = result.writes;
+    problems.push(...result.problems);
   }
   if (problems.length > 0) throw new ValidationFailed(problems);
 

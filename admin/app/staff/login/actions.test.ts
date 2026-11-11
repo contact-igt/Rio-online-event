@@ -68,6 +68,17 @@ describe("staffSignIn", () => {
     expect(JSON.stringify(state)).not.toContain("secret-pw");
     expect(h.relayed).toEqual([]);
   });
+  it.each([
+    [{ status: 0, fault: "not_configured" }, "notConfigured"],
+    [{ status: 0, fault: "invalid_config" }, "notConfigured"],
+    [{ status: 403, apiCode: "origin_not_allowed" }, "refused"],
+    [{ status: 404, apiCode: "not_found" }, "unavailable"],
+    [{ status: 0, fault: "unreachable" }, "unavailable"],
+  ])("tells a setup problem from an outage: %j gives %s", async (reply, error) => {
+    h.reply = { body: null, setCookies: [], ...reply } as typeof h.reply;
+    expect(await staffSignIn(undefined, form({ email: "a@rio.local", password: "secret-pw" }))).toEqual({ error, email: "a@rio.local" });
+    expect(h.relayed).toEqual([]);
+  });
   it("does not call the API for input that is plainly invalid", async () => {
     expect(await staffSignIn(undefined, form({ email: "nope", password: "" }))).toMatchObject({ error: "invalid" });
     expect(h.calls).toEqual([]);

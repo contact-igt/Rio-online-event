@@ -96,6 +96,16 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
     await sql("UPDATE question_sets SET status = 'published', published_at = ? WHERE id = ?", [now(), setId]);
     return setId;
   }
+  async function publishSetWith(eventId: number, version: number, questions: Record<string, [string, string | null, number | null, number | null]>): Promise<number> {
+    await sql("INSERT INTO question_sets (event_id, version) VALUES (?, ?)", [eventId, version]);
+    const setId = Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND version = ?", [eventId, version])).rows[0]!.id);
+    let position = 0;
+    for (const [key, [type, options, minChoices, maxChoices]] of Object.entries(questions)) {
+      await sql("INSERT INTO questions (question_set_id, position, question_key, type, prompt_ta, prompt_en, options_json, min_choices, max_choices) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [setId, ++position, key, type, `கேள்வி ${key}`, `Question ${key}`, options, minChoices, maxChoices]);
+    }
+    await sql("UPDATE question_sets SET status = 'published', published_at = ? WHERE id = ?", [now(), setId]);
+    return setId;
+  }
   async function openRegistration(over: { open?: number; close?: number; guardian?: string | null; media?: string | null } = {}) {
     await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = ?, media_consent_version = ? WHERE id = 1", [
       new Date(clock.t + (over.open ?? -HOUR)), new Date(clock.t + (over.close ?? 60 * DAY)), over.guardian === undefined ? "v1" : over.guardian, over.media === undefined ? "m1" : over.media,
@@ -902,6 +912,40 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
       expect(r.body.error?.fields).toEqual([{ field: "answers.siblings", problem: "out_of_range" }]);
       expect((await row(s.reference)).child_name).toBe("Asha Kumar");
       expect(await scalar("SELECT COUNT(*) AS n FROM entry_answers WHERE submission_id = ?", [await idOf(s.reference)])).toBe(0);
+    });
+
+    it("saves answers sent with the first request, against the question ids and the published set the entry is bound to", async () => {
+      const s = await register({ answers: { school: "அரசு பள்ளி", level: "b", hobbies: ["c", "a"], siblings: 1 } });
+      expect(s.reply.body.registration!.answers).toEqual({ school: "அரசு பள்ளி", level: "b", hobbies: ["a", "c"], siblings: 1 });
+      expect(s.reply.body.registration!.missingRequired).toEqual([]);
+      const stored = (await sql<{ k: string; question_set_id: number; entry_set: number }>(
+        "SELECT q.question_key AS k, a.question_set_id, s.question_set_id AS entry_set FROM entry_answers a JOIN questions q ON q.id = a.question_id JOIN submissions s ON s.id = a.submission_id WHERE a.submission_id = ? ORDER BY q.position", [await idOf(s.reference)],
+      )).rows;
+      expect(stored.map((x) => x.k)).toEqual(["school", "level", "hobbies", "siblings"]);
+      expect(stored.every((x) => Number(x.question_set_id) === ids.mainSet && Number(x.entry_set) === ids.mainSet)).toBe(true);
+      expect((await current(s)).body.registration!.answers).toEqual(s.reply.body.registration!.answers);
+    });
+
+    it("refuses a first request with an invalid answer and creates nothing", async () => {
+      const before = await scalar("SELECT COUNT(*) AS n FROM submissions");
+      const r = await create({ answers: { school: "ok", group: "z", nothing_here: "x" } });
+      expect(r.status).toBe(422);
+      expect(r.body.error?.fields).toEqual([{ field: "answers.group", problem: "not_an_option" }, { field: "answers.nothing_here", problem: "unknown_question" }]);
+      expect(r.cookie).toBeNull();
+      expect(await scalar("SELECT COUNT(*) AS n FROM submissions")).toBe(before);
+    });
+
+    it("enforces a question's minimum and maximum number of checked boxes", async () => {
+      const eventId = await addEvent(`choices-${next()}`, 3, 12);
+      const setId = await publishSetWith(eventId, 1, { choose: ["checkboxes", OPTIONS, 1, 2] });
+      const slug = (await sql<{ slug: string }>("SELECT slug FROM events WHERE id = ?", [eventId])).rows[0]!.slug;
+      expect((await create({ eventSlug: slug, answers: { choose: ["a", "b", "c"] } })).body.error?.fields).toEqual([{ field: "answers.choose", problem: "wrong_number_of_choices" }]);
+      const s = await register({ eventSlug: slug, answers: { choose: ["a", "b"] } });
+      expect(s.reply.body.registration!.answers).toEqual({ choose: ["a", "b"] });
+      expect(s.reply.body.registration!.questionSet.questions[0]).toMatchObject({ minChoices: 1, maxChoices: 2 });
+      expect((await patch(s, { answers: { choose: ["a", "b", "c"] } })).body.error?.fields).toEqual([{ field: "answers.choose", problem: "wrong_number_of_choices" }]);
+      expect((await patch(s, { answers: { choose: ["c"] } })).body.registration!.answers).toEqual({ choose: ["c"] });
+      expect(Number((await row(s.reference)).question_set_id)).toBe(setId);
     });
 
     it("keeps an entry on the question set it was created with when a newer set is published", async () => {

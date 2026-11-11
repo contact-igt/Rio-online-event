@@ -1,12 +1,14 @@
 import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
 import { asDate } from "../db/values.ts";
+import { isStaffRole, type StaffRole } from "./roles.ts";
 import { newToken, sha256Hex, TOKEN_PATTERN } from "./tokens.ts";
+
+export type { StaffRole } from "./roles.ts";
 
 // Database-backed sessions (table staff_sessions). Nothing about a session is trusted from the cookie except the random token: on every
 // request the session row, the account's `active` flag and its role are read again, so a revoked session, a deactivated judge or a changed
 // role takes effect on the very next request.
 
-export type StaffRole = "admin" | "judge";
 
 export type StaffSession = {
   sessionId: number;
@@ -54,7 +56,7 @@ export async function findSession(db: DatabaseAdapter, token: string, now: Date,
     [sha256Hex(token)],
   );
   const row = rows[0];
-  if (!row || Number(row.active) !== 1 || (row.role !== "admin" && row.role !== "judge")) return null;
+  if (!row || Number(row.active) !== 1 || !isStaffRole(row.role)) return null;
   const expiresAt = asDate(row.expires_at);
   const lastSeen = asDate(row.last_seen_at ?? row.created_at);
   const idleExpiresAt = new Date(Math.min(lastSeen.getTime() + idleMs, expiresAt.getTime()));

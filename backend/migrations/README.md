@@ -1,13 +1,13 @@
 # Database migrations
 
-One folder per engine (`mysql/` for MySQL 8, `mariadb/` for the local XAMPP MariaDB, `sqlite/`) with the same versions and names in all of them. File name: `0001_snake_case.sql`.
+One folder per engine (`mysql/` for MySQL 8 compatibility, `mariadb/` for XAMPP and the hosted MariaDB deployment, `sqlite/`) with the same versions and names in all of them. File name: `0001_snake_case.sql`.
 Statements are separated by a line containing only `--> statement-breakpoint`.
 
-- Never edit a file after it has been applied anywhere: the checksum is recorded and `db:migrate` refuses to run. Add a new version instead.
+- Never edit a file after it has been applied anywhere: the checksum is recorded and `npm run migrate` refuses to run. Add a new version instead.
 - MySQL commits DDL implicitly, so a half-failed MySQL migration is not rolled back. Keep each file to one logical change and prefer `IF NOT EXISTS`
   (tables) or `DROP ... IF EXISTS` before `CREATE` (triggers, views).
 - SQLite runs each file in one transaction.
-- `npm run db:verify` checks that both folders match. Production runs need `RIO_CONFIRM_MIGRATE=<database name>` for that one command.
+- `npm run db:verify` checks that the dialect folders match. `npm run migrate` reads `DB_ALLOWED_DATABASE`, verifies it against the live connection, and applies pending versions without a separate confirmation variable.
 
 ## Application schema (0001 to 0010 from M2B, 0011 from M4)
 
@@ -27,6 +27,7 @@ administrator or a later module enters; nothing here invents an event date or a 
 | 0009 judging | `judge_profiles`, `judge_assignments`, `scores`, `winners`, view `published_winners` | Assignment, scoring, winners, and the only thing the public may read. |
 | 0010 email_and_rate_limits | `email_outbox`, `rate_limits` | Confirmation e-mail queue; hashed-key counters. |
 | 0011 optional_guardian_email | `submissions` (column made nullable) | The guardian's e-mail address is optional (M4, no parent accounts). MySQL: `ALTER TABLE`. SQLite has to rebuild the table; the file starts with `-- rio:foreign-keys-off` so the runner uses the SQLite-documented procedure (enforcement off, `foreign_key_check` before commit, enforcement back on). The "submitted entry is frozen" trigger now compares the address null-safely. |
+| 0013 super_admin_role | `staff_users`, `judge_profiles` (foreign key re-created) | Adds the role `super_admin` (roles: `super_admin`, `admin`, `judge`). `role` widens to `VARCHAR(16)`; the role CHECK is replaced; `UNIQUE (id, role)` and the judge foreign key are kept. MySQL/MariaDB: the judge foreign key is dropped and re-added around the change. SQLite: table rebuild with `-- rio:foreign-keys-off`. |
 
 ### Relationships
 
@@ -123,13 +124,14 @@ enforcement off, runs BEGIN and the statements, runs `PRAGMA foreign_key_check` 
 switches enforcement on again whatever happened. MySQL ignores the marker. Do not use it for anything else. Tests: `migrate-foreign-keys.test.ts`,
 and `migration-0011.test.ts` applies 0011 to a database full of related rows.
 
-### The `mariadb/` folder (local development on XAMPP; production is MySQL 8)
+### The `mariadb/` folder (XAMPP local development and hosted MariaDB)
 
 `mariadb/` is the reviewed `mysql/` text with only two collation names changed, because MariaDB 10.4 has no `0900` collations: `utf8mb4_0900_bin` becomes
 `utf8mb4_nopad_bin` (exact comparison, no trailing-space padding: the same rule for keys, codes, digests and normalised names) and `utf8mb4_0900_ai_ci`
 becomes `utf8mb4_unicode_ci` (display text only). A test (`engine.test.ts`) fails if any other character differs, and `db:verify` checks the three folders
-define the same migrations. Select it with `DB_ENGINE=mariadb`; production refuses that setting. The files carry a header saying they have not yet run on a
-real MariaDB server; remove that line only after `npm run test:local` has passed against one.
+define the same migrations. Select it with `DB_ENGINE=mariadb`; production additionally requires `DB_ACCEPT_MARIADB_IN_PRODUCTION` to equal the approved
+database name. The files carry a header saying they have not yet run on a real MariaDB server; remove that line only after `npm run test:local` has passed against one.
+Those historical headers are part of the recorded migration text; do not edit an applied migration merely to change its comment, because that changes its checksum.
 
 | Topic | MySQL 8 | MariaDB 10.4 |
 |---|---|---|
@@ -142,3 +144,18 @@ real MariaDB server; remove that line only after `npm run test:local` has passed
 | `CREATE TRIGGER`, `SIGNAL`, generated columns, composite foreign keys, expression defaults, `CREATE OR REPLACE VIEW` | supported | supported (10.2 and later); behaviour unverified until a run |
 
 `db:status` never writes (not even the `rio_migrations` table); `db:ready` runs a real query and checks the migration records without writing.
+
+### Migration 0013 partial-failure recovery
+
+`0013_super_admin_role` changes a column and temporarily drops/recreates a check constraint and a composite foreign key. MariaDB commits each DDL
+statement independently, so a failure after one of the `DROP` statements can leave a partially changed schema while `rio_migrations` still reports version
+`0013` as pending. The migration is deliberately not auto-retried.
+
+If a MariaDB 0013 run fails:
+
+1. Stop all application instances and do not rerun `npm run migrate`.
+2. Take a provider snapshot and inspect `SHOW CREATE TABLE staff_users` and `SHOW CREATE TABLE judge_profiles` against the 0012 definitions and the 0013 target definitions.
+3. Restore the snapshot, or have a MariaDB operator complete/repair the exact missing constraint and column changes after review.
+4. Re-run the migration only after the schema and migration record are consistent; verify `npm run db:status` before starting the backend.
+
+SQLite's transactional rebuild tests do not prove this MariaDB recovery path.

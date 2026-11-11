@@ -1,6 +1,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { requireStaff, staffOf } from "../auth/middleware.ts";
+import { ROLES } from "../auth/roles.ts";
 import type { AuthDeps } from "../auth/staff.ts";
 import { AppError } from "../http/errors.ts";
 import { requestIdOf } from "../http/request-id.ts";
@@ -9,11 +10,13 @@ import {
   addQuestion, asRuleViolation, createDraft, createSetBody, deleteQuestion, discardDraft, FieldsInvalid, getSet, listCompetitions, listSets, previewSet, publishBody, publishSet,
   questionBody, reorderBody, reorderQuestions, updateQuestion,
 } from "./questions.ts";
+import { listQuery, listRegistrations, loadRegistration } from "./registrations.ts";
 import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } from "./settings.ts";
 
 // Mounted under /api/v1/admin. Administrators only: requireStaff checks the origin, the session, the role (read from the database) and, for every
 // request that changes something, the CSRF token. A judge and an anonymous caller get the same refusals as on every staff route.
 //   GET /dashboard, GET and PATCH /settings                                         (M5A)
+//   GET /registrations (filters: competition, status, page), GET /registrations/:entryCode   (read only; opening one is audited)
 //   GET /competitions, GET and POST /competitions/:slug/question-sets               (M5B)
 //   GET and DELETE ../question-sets/:setId, GET ../:setId/preview, POST ../:setId/publish
 //   POST ../:setId/questions, PATCH and DELETE ../:setId/questions/:questionId, PUT ../:setId/order
@@ -42,7 +45,7 @@ function parse<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
 
 export function adminRouter(deps: AuthDeps): Router {
   const router = Router();
-  const admin = requireStaff(deps, { roles: ["admin"] });
+  const admin = requireStaff(deps, { roles: ROLES.adminApi });
   const now = () => deps.now();
   const actor = (res: Response) => ({ staffId: staffOf(res).staffId, requestId: requestIdOf(res) });
   const guarded = (handler: RequestHandler): RequestHandler => async (req, res, next) => {
@@ -63,6 +66,17 @@ export function adminRouter(deps: AuthDeps): Router {
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) throw new AppError(400, "invalid_request", "The request could not be understood.");
     res.json(await updateSettings(deps.db, now(), actor(res), parsed.data));
+  }));
+
+  router.get("/registrations", ...admin, guarded(async (req, res) => {
+    const parsed = listQuery.safeParse(req.query);
+    if (!parsed.success) throw new AppError(400, "invalid_request", "The request could not be understood.");
+    res.json(await listRegistrations(deps.db, parsed.data));
+  }));
+  router.get("/registrations/:entryCode", ...admin, guarded(async (req, res) => {
+    const code = req.params.entryCode;
+    if (typeof code !== "string" || !/^[A-Z0-9]{6,16}$/u.test(code)) throw notFound();
+    res.json({ registration: await loadRegistration(deps.db, now(), actor(res), code) });
   }));
 
   const sets = "/competitions/:slug/question-sets";
@@ -97,6 +111,13 @@ export function adminRouter(deps: AuthDeps): Router {
   router.post(`${sets}/:setId/publish`, ...admin, guarded(async (req, res) => {
     parse(publishBody, req.body);
     res.json(await publishSet(deps.db, now(), actor(res), slug(req), setId(req)));
+  }));
+
+  // Staff management is for the Super Admin only. It is read-only for now; creating and changing accounts stays on the command line.
+  const superAdmin = requireStaff(deps, { roles: ROLES.superAdminOnly });
+  router.get("/staff", ...superAdmin, guarded(async (_req, res) => {
+    const { rows } = await deps.db.query<{ id: number | string; email: string; display_name: string; role: string; active: number }>("SELECT id, email, display_name, role, active FROM staff_users ORDER BY id");
+    res.json({ staff: rows.map((r) => ({ id: Number(r.id), email: r.email, displayName: r.display_name, role: r.role, active: Number(r.active) === 1 })) });
   }));
   return router;
 }

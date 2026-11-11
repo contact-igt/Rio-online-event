@@ -93,11 +93,29 @@ describe("assertDatabaseName", () => {
 });
 
 describe("the dev and start scripts", () => {
-  it("dev loads .env, start loads no env file, nothing runs migrations", async () => {
+  it("dev loads only .env.development.local, the plain CLI commands load only .env, while start loads runtime variables", async () => {
     const scripts = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")).scripts as Record<string, string>;
-    expect(scripts.dev).toContain("--env-file-if-exists=.env ");
+    expect(scripts.dev).toContain("--env-file=.env.development.local ");
+    expect(scripts.dev).not.toMatch(/--env-file(?:-if-exists)?=\.env(?![.\w])/); // the dev server never reads the production settings in .env
+    for (const name of ["migrate", "db:status", "db:drop", "db:verify", "staff:seed-super-admin", "staff:create-admin", "staff:reset-password", "db:seed:events"]) {
+      expect(scripts[name], name).toContain("--env-file-if-exists=.env");
+      expect(scripts[name], name).not.toContain("--env-file-if-exists=.env.local");
+    }
+    expect(scripts.migrate).toBe("node --env-file-if-exists=.env src/db/cli.ts migrate");
+    expect(scripts["db:status"]).toBe("node --env-file-if-exists=.env src/db/cli.ts status");
+    expect(scripts["db:drop"]).toBe("node --env-file-if-exists=.env src/db/cli.ts drop");
+    expect(scripts["db:verify"]).toBe("node --env-file-if-exists=.env src/db/cli.ts verify");
+    for (const name of ["db:setup", "db:setup:production", "db:migrate", "db:status:production", "db:ready", "db:ready:production", "db:reset:test"]) expect(scripts[name]).toBeUndefined();
     expect(scripts.start).not.toMatch(/env-file|\.env/);
     expect(scripts.build).not.toMatch(/env|migrate|db:/);
     for (const name of ["dev", "start", "build"]) expect(scripts[name]).not.toMatch(/migrate/);
+  });
+
+  it("keeps a placeholder-only backend environment example", () => {
+    const example = readFileSync(join(import.meta.dirname, "../.env.example"), "utf8");
+    expect(example).toContain("DATABASE_URL=mysql://rio_app:REPLACE_WITH_LOCAL_PASSWORD@127.0.0.1:3306/rio_hospital");
+    expect(example).toContain("DB_ENGINE=mariadb");
+    expect(example).toContain("Railway production variables belong in Railway runtime settings");
+    expect(example).not.toMatch(/password123|prod_secret|secret_password/i);
   });
 });

@@ -4,17 +4,19 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { registerPath } from "@/lib/auth/paths";
 import { getEvent } from "@/lib/events";
-import { currentRegistration, createRegistration, publicSettings, recoverRegistration, updateRegistration } from "@/lib/registration/express";
+import { currentRegistration, createRegistration, publicEvents, publicSettings, recoverRegistration, updateRegistration, type PublicQuestion } from "@/lib/registration/express";
 import { reg, type Msg } from "@/lib/registration/messages";
 import { parseEventSlug } from "@/lib/auth/schemas";
 import { normalizeMobile } from "@/lib/registration/schemas";
 
-export type SaveState = { error?: Msg; fieldErrors?: Partial<Record<string, Msg>>; duplicateId?: string; values?: Record<string, string>; recoveryCode?: string } | undefined;
+type Answers = Record<string, string | number | string[] | null>;
+export type SaveState = { error?: Msg; fieldErrors?: Partial<Record<string, Msg>>; duplicateId?: string; values?: Record<string, string>; answers?: Answers; recoveryCode?: string } | undefined;
 
 const noticeCookie = "rio_recovery_notice";
 
 const problemMessage = (field: string, problem: string): Msg => {
   if (field === "childName" || field === "guardianName") return reg.errors.name;
+  if (field.startsWith("answers.")) return reg.errors.answer;
   if (field === "childAge") return reg.errors.age;
   if (field === "guardianMobile") return reg.errors.mobile;
   if (field === "guardianConsent") return reg.errors.consent;
@@ -24,23 +26,53 @@ const problemMessage = (field: string, problem: string): Msg => {
   return reg.errors.fix;
 };
 
+const formField: Record<string, string> = { childName: "childName", childAge: "childAge", guardianName: "parentName", guardianMobile: "mobile", guardianConsent: "guardianConsent" };
+
+/** The API's field problems as messages under the form fields they belong to. An answer problem is shown under its question and also as the form-level message. */
+function failure(result: { fields?: { field: string; problem: string }[] }, values: Record<string, string>, answers: Answers): SaveState {
+  const fieldErrors: Partial<Record<string, Msg>> = {};
+  let error: Msg | undefined;
+  for (const { field: path, problem } of result.fields ?? []) {
+    const field = path.split(".")[0] === "guardianConsent" ? "guardianConsent" : path; // the API names the consent problem "guardianConsent.accepted"
+    const target = formField[field];
+    if (target) fieldErrors[target] ??= problemMessage(field, problem);
+    else if (field.startsWith("answers.")) {
+      fieldErrors[`answer_${field.slice("answers.".length)}`] ??= reg.errors.answerInvalid;
+      error ??= reg.errors.answer;
+    } else error ??= problemMessage(field, problem);
+  }
+  return { error: error ?? (Object.keys(fieldErrors).length > 0 ? reg.errors.fix : problemMessage("form", "save_failed")), fieldErrors, values, answers };
+}
+
+const hasAnswer = (value: Answers[string] | undefined): boolean =>
+  Array.isArray(value) ? value.length > 0 : typeof value === "number" ? Number.isFinite(value) : typeof value === "string" ? value.trim() !== "" : false;
+
+/** Required questions without an answer. The questions come from the API (the set the entry is bound to), never from what the browser posted. */
+function missingRequired(questions: readonly PublicQuestion[], answers: Answers): Partial<Record<string, Msg>> {
+  const missing: Partial<Record<string, Msg>> = {};
+  for (const q of questions) if (q.required && q.type !== "instruction" && !hasAnswer(answers[q.key])) missing[`answer_${q.key}`] = reg.errors.answerRequired;
+  return missing;
+}
+
 function rawValues(formData: FormData): Record<string, string> {
   const values: Record<string, string> = {};
-  for (const key of ["childName", "childAge", "guardianName", "guardianMobile", "guardianEmail"]) {
+  for (const key of ["childName", "childAge", "parentName", "mobile", "guardianEmail"]) {
     const value = formData.get(key);
     if (typeof value === "string") values[key] = value;
   }
   return values;
 }
 
-function answersFrom(formData: FormData): Record<string, string | number | string[] | null> {
-  const answers: Record<string, string | number | string[] | null> = {};
-  for (const [key] of formData.entries()) {
-    if (!key.startsWith("answer_")) continue;
-    const questionKey = key.slice("answer_".length);
+function answersFrom(formData: FormData): Answers {
+  const answers: Answers = {};
+  // Every rendered question posts its type, even when nothing was chosen, so an unticked checkbox group or radio still reaches the API as "no answer".
+  for (const [typeKey] of formData.entries()) {
+    if (!typeKey.startsWith("questionType_")) continue;
+    const questionKey = typeKey.slice("questionType_".length);
     if (!/^[a-z][a-z0-9_]{0,39}$/.test(questionKey)) continue;
-    const type = formData.get(`questionType_${questionKey}`);
-    const all = formData.getAll(key).filter((item): item is string => typeof item === "string");
+    const type = formData.get(typeKey);
+    if (type === "instruction") continue;
+    const all = formData.getAll(`answer_${questionKey}`).filter((item): item is string => typeof item === "string");
     if (type === "checkboxes") answers[questionKey] = all;
     else if (type === "number") answers[questionKey] = all[0]?.trim() === "" ? null : Number(all[0]);
     else answers[questionKey] = all[0] ?? null;
@@ -69,23 +101,28 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
   if (!settings.registrationOpen) return { error: reg.errors.closed, values: raw };
   const consent = consentBody(formData, settings);
   if (!consent) return { error: reg.errors.closed, values: raw };
-  const guardianMobile = normalizeMobile(raw.guardianMobile ?? "");
-  if (!guardianMobile) return { error: reg.errors.mobile, values: raw };
-  const draftId = String(formData.get("draftId") ?? "");
   const answers = answersFrom(formData);
+  const guardianMobile = normalizeMobile(raw.mobile ?? "");
+  if (!guardianMobile) return { error: reg.errors.fix, fieldErrors: { mobile: reg.errors.mobile }, values: raw, answers }; // under the mobile field, like every other field problem
+  const draftId = String(formData.get("draftId") ?? "");
+  // The question set an entry answers is fixed when it is created: an existing draft keeps its own version, a new one gets the one published now.
+  const current = draftId ? await currentRegistration() : null;
+  if (draftId && (!current || current.view.status !== "draft" || current.view.event.slug !== event.slug)) return { error: reg.errors.notFound, values: raw, answers };
+  const questionSet = current ? current.view.questionSet : (await publicEvents())?.find((item) => item.slug === event.slug)?.questionSet;
+  if (!questionSet) return { error: reg.errors.unavailable, values: raw, answers };
+  const required = missingRequired(questionSet.questions, answers);
+  if (Object.keys(required).length > 0) return { error: reg.errors.fix, fieldErrors: required, values: raw, answers };
   const body = {
     childName: raw.childName ?? "",
     childAge: Number(raw.childAge),
-    guardianName: raw.guardianName ?? "",
+    guardianName: raw.parentName ?? "",
     guardianMobile,
     guardianEmail: raw.guardianEmail?.trim() ? raw.guardianEmail.trim() : null,
     ...consent,
     ...(Object.keys(answers).length > 0 ? { answers } : {}),
     eventSlug: event.slug,
   };
-  if (draftId) {
-    const current = await currentRegistration();
-    if (!current || current.view.status !== "draft") return { error: reg.errors.notFound, values: raw };
+  if (current) {
     const patch = {
       childName: body.childName,
       childAge: body.childAge,
@@ -102,16 +139,16 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
     } catch {
       return { error: reg.errors.unavailable, values: raw };
     }
-    if (result.status !== 200) return { error: problemMessage("form", result.fields?.[0]?.problem ?? "save_failed"), values: raw };
+    if (result.status !== 200) return failure(result, raw, answers);
     redirect(`${registerPath(event.slug)}?saved=1`);
   }
   let result;
   try {
     result = await createRegistration(body);
   } catch {
-    return { error: reg.errors.unavailable, values: raw };
+    return { error: reg.errors.unavailable, values: raw, answers };
   }
-  if (result.status !== 201 || !result.body) return { error: problemMessage("form", result.fields?.[0]?.problem ?? "save_failed"), values: raw };
+  if (result.status !== 201 || !result.body) return failure(result, raw, answers);
   const jar = await cookies();
   jar.set(noticeCookie, result.body.recoveryCode, { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 300 });
   redirect(`${registerPath(event.slug)}?saved=1`);

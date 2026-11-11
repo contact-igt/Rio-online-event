@@ -1,13 +1,13 @@
 # Local development without Docker
 
-The backend runs on your own machine against the **XAMPP database** (MariaDB, port 3306). No Docker, no container, no extra server. Production is
-**MySQL 8** on Railway; this file explains how the two relate and what can and cannot be checked locally.
+The backend runs on your own machine against the **XAMPP database** (MariaDB, port 3306). No Docker, no container, no extra server. Production is a
+hosted **MariaDB** service on Railway; this file explains how the two relate and what can and cannot be checked locally.
 
 | | Local (XAMPP) | Production |
 |---|---|---|
-| Server | MariaDB 10.4 (ships with XAMPP) | MySQL 8 |
-| `DB_ENGINE` | `mariadb` | `mysql` (the default) |
-| Migration folder | `migrations/mariadb/` | `migrations/mysql/` |
+| Server | MariaDB 10.4 (ships with XAMPP) | Hosted MariaDB (version must be pinned and matched by the isolated test database) |
+| `DB_ENGINE` | `mariadb` | `mariadb` (requires `DB_ACCEPT_MARIADB_IN_PRODUCTION` equal to the approved database name) |
+| Migration folder | `migrations/mariadb/` | `migrations/mariadb/` |
 | Database | `rio_hospital` (development). There is no standing test database. | the production database |
 | Registration | closed (nothing here opens it) | closed until an administrator sets a window and a consent version |
 
@@ -16,7 +16,7 @@ SQLite (`DB_DIALECT=sqlite`) still works for a quick start with no server at all
 ## 1. Database set-up
 
 XAMPP already has an empty `rio_hospital` database once you create it in phpMyAdmin (utf8mb4). The backend then builds its tables itself with
-`npm run db:migrate`. For anything beyond a quick start, use a dedicated account instead of `root`. In phpMyAdmin > SQL, replace the placeholder with a long
+`npm run migrate`. For anything beyond a quick start, use a dedicated account instead of `root`. In phpMyAdmin > SQL, replace the placeholder with a long
 random password of your own and run:
 
 ```sql
@@ -31,7 +31,27 @@ with `SHOW GRANTS FOR 'rio_app'@'localhost';` after a restart of MySQL before re
 2. In `C:\xampp\mysql\bin\my.ini`, under `[mysqld]`, add `bind-address=127.0.0.1`, then restart MySQL from the XAMPP control panel.
 3. In Windows Defender Firewall, remove or disable the inbound "Allow" rules named `mysqld` (Public profile), or block inbound TCP 3306.
 
-## 2. `backend/.env.local` (git-ignored; you create it, nobody else needs to read it)
+## 2. Which env file is read by what (all git-ignored; you create them, nobody else needs to read them)
+
+| File | Read by | Use it for |
+|---|---|---|
+| `backend/.env.development.local` | `npm run dev` and every `*:dev` command (`migrate:dev`, `db:status:dev`, `db:seed:events:dev`, `staff:seed-super-admin:dev`, `staff:create-admin:dev`, `staff:reset-password:dev`) | local development. A missing file is an error, never a silent switch to other settings. |
+| `backend/.env` | the plain commands (`npm run migrate`, `db:status`, `staff:*`, `db:seed:events`) | the database you operate by hand. If that is the hosted Production database, it stays here and the dev server never reads it. |
+| Railway variables | `npm start` (no file at all) | the hosted service |
+
+Quick start with nothing to install (a disposable SQLite file; copy `backend/.env.example` to `backend/.env.development.local`):
+
+```
+cd backend
+npm run migrate:dev
+npm run db:seed:events:dev
+npm run staff:seed-super-admin:dev -- --email you@example.org --name "Your Name"   # needs RIO_SUPER_ADMIN_PASSWORD set first, see below
+npm run dev
+```
+The Super Admin password is read from `RIO_SUPER_ADMIN_PASSWORD` only and is never printed. In PowerShell: `$env:RIO_SUPER_ADMIN_PASSWORD = "<a strong password of your own>"` (then run the command, then `Remove-Item Env:RIO_SUPER_ADMIN_PASSWORD`). In Git Bash: `RIO_SUPER_ADMIN_PASSWORD=... npm run ...`. The account must choose a new password at its first sign-in.
+Then `npm run dev` in `admin/` (port 3001) and in `website/` (port 3000). Each app finds the API through the `_DEVELOPMENT` lines of its own `.env` (see `DEPLOYMENT.md` section 2); nothing is switched by hand. If a port is already taken, an older server is still running: stop it first, or you will be talking to it instead (a backend started without a database answers `/health` and 404 for everything else).
+
+For XAMPP's MariaDB instead of SQLite, put this in `backend/.env.development.local`:
 
 ```
 NODE_ENV=development
@@ -45,24 +65,25 @@ PUBLIC_ORIGINS=http://localhost:3000
 ```
 Percent-encode special characters in the password (`@` becomes `%40`). The backend refuses to start if the host in `DATABASE_URL` is not `DB_ALLOWED_HOST`.
 
-**How the environment is chosen.** `NODE_ENV` and `APP_ENV` must name the same environment, and `NODE_ENV` alone never authorises a database. In development the database host must be a loopback address (a hosted host is refused), and `npm run dev`, `db:*` and `staff:*` read this file. `npm run build` needs no database variables, and nothing runs migrations when the server starts: `npm run db:migrate` is always typed by you. At start-up the server checks that the connected server is the engine named in `DB_ENGINE` and that `SELECT DATABASE()` is the database named in `DATABASE_URL`, and refuses to run otherwise. Production never reads this file: if `.env.local` exists on a production run, the server and the `db:*` tools refuse to start.
+**How the environment is chosen.** `NODE_ENV` and `APP_ENV` must name the same environment, and every database CLI command requires `DB_ALLOWED_DATABASE`. The `migrate`, `db:status`, `db:drop`, `db:verify`, and `staff:*` commands explicitly read `backend/.env`; the application server continues to use its runtime environment. The CLI checks that the configured approved database name matches both the connection target and the actual connected database before it reads or changes database objects. Production migrations need no separate confirmation variable. `npm run build` needs no database variables, and nothing runs migrations during server startup.
 
 ## 3. Everyday commands (inside `backend/`)
 
 | Command | What it does | Writes? |
 |---|---|---|
-| `npm run db:status` | Lists every migration as applied or pending. | **No** (not even the tracking table). |
-| `npm run db:ready` | A real query, plus a read-only check that every migration is applied. Prints `ready` or `not ready: <reason>`. | No |
-| `npm run db:migrate` | Applies pending migrations from `migrations/mariadb/`, in order, with checksums. Refuses a changed, missing or out-of-order file. | Yes |
+| `npm run migrate` | Checks migration history and schema drift, then applies only pending versioned migrations in order. Stops on checksum, ordering, partial-schema, or SQL errors. | Yes |
+| `npm run db:status` | Lists applied and pending migrations and reports schema drift. | **No** (not even the tracking table). |
+| `npm run db:drop` | Lists the RIO tables of the database named by `DB_ALLOWED_DATABASE` (development or production), then removes them after you type its exact database name in an interactive terminal. The database itself is kept; run `npm run migrate` afterwards. | Yes |
 | `npm run db:seed:events` | Adds the six competitions (names and age ranges, from `website/lib/events.ts`) to `events`. Idempotent; never overwrites; stops on a conflict; `-- --dry-run` shows the plan. Local development only. | Yes |
-| `npm run db:verify` | Checks that the `mysql`, `mariadb` and `sqlite` folders define the same migrations. | No |
-| `npm run dev` | Starts the API on port 4000 (reads `.env.local`). | |
+| `npm run db:verify` | Checks that the `mysql`, `mariadb` and `sqlite` migration folders define the same versions and names. | No |
+| `npm run dev` | Starts the API on port 4000 (reads `.env`). | |
 | `npm run staff:create-admin -- --email you@example.org --name "Your Name"` | Creates the first administrator; the temporary password is printed once. | Yes |
+| `RIO_SUPER_ADMIN_PASSWORD=<your strong password> npm run staff:seed-super-admin` | Creates the Super Admin (default riosuperadmin@gmail.com, "Rio Super Admin"; `--email` and `--name` override). The password is read from that variable only and is never printed. Run again: reports that it exists and changes nothing. Different role under that e-mail: refused. | Yes |
 
-`GET /api/v1/health` only says the process is up; it does **not** touch the database. Use `npm run db:ready` for that.
+`GET /api/v1/health` only says the process is up; it does **not** touch the database. Use `npm run db:status` to inspect migration history and schema drift.
 
-The tools check `SELECT VERSION()` against `DB_ENGINE` and stop with a plain message if they disagree, so MySQL 8 migrations are never run on MariaDB by
-mistake (or the reverse).
+The tools check `SELECT VERSION()` against `DB_ENGINE` and stop with a plain message if they disagree, so MySQL migrations are never run on MariaDB by
+mistake (or the reverse). The hosted MariaDB version must be verified separately with an isolated matching test database before production initialization.
 
 ## 4. Running the automated tests
 

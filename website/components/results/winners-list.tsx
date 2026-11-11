@@ -29,7 +29,7 @@ export function WinnersList({ state }: { state: ResultsState }) {
   return (
     <div className="space-y-10">
       {events
-        .filter((e) => state.winners.some((w) => w.eventId === e.number))
+        .filter((e) => state.winners.some((w) => w.eventSlug === e.slug))
         .map((e) => (
           <section key={e.number} aria-labelledby={`results-${e.number}`}>
             <h2 id={`results-${e.number}`} className="font-heading text-2xl font-bold text-rio-navy">
@@ -37,7 +37,7 @@ export function WinnersList({ state }: { state: ResultsState }) {
             </h2>
             <ol className="mt-4 grid gap-3 sm:grid-cols-2">
               {state.winners
-                .filter((w) => w.eventId === e.number)
+                .filter((w) => w.eventSlug === e.slug)
                 .map((w) => (
                   <li key={w.rank} className="flex min-w-0 items-center gap-4 rounded-2xl border border-rio-navy/15 bg-rio-blush p-4">
                     <span className="grid size-12 shrink-0 place-items-center rounded-full bg-rio-navy font-display text-xl font-bold text-white">

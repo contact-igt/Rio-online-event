@@ -111,33 +111,36 @@ describe.each(dialects)("%s staff command line", (dialect: Dialect) => {
 describe("production safety", () => {
   const production = { NODE_ENV: "production", APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio_prod", DB_DIALECT: "mysql", DATABASE_URL: "mysql://rio_app:s3cret-pass-word@db.internal:3306/rio_prod", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org", ARGON2_MEMORY_KIB: "19456", ARGON2_PASSES: "2" };
 
-  it("refuses to run in production unless the operator names the database, and never opens it or prints the connection string", async () => {
+  it("uses DB_ALLOWED_DATABASE without a second confirmation variable", async () => {
     let opened = false;
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runStaffCli(["create-admin", "--email", "a@example.org", "--name", "A"], { env: production, out: (l) => out.push(l), err: (l) => err.push(l) }, () => {
+    const code = await runStaffCli(["seed-super-admin"], { env: production, out: (l) => out.push(l), err: (l) => err.push(l) }, () => {
       opened = true;
-      throw new Error("must not be opened");
+      return { dialect: "mysql", query: async (sql: string) => ({ rows: sql === "SELECT DATABASE() AS d" ? [{ d: "rio_prod" }] : [{ v: "8.0.42" }], affectedRows: 0 }), close: async () => undefined } as unknown as DatabaseAdapter;
     });
-    expect(code).toBe(1);
-    expect(opened).toBe(false);
-    expect(err.join(" ")).toContain("RIO_CONFIRM_STAFF_CLI");
+    expect(code).toBe(2);
+    expect(opened).toBe(true);
+    expect(err.join(" ")).toContain("RIO_SUPER_ADMIN_PASSWORD");
+    expect(err.join(" ")).not.toContain("RIO_CONFIRM_STAFF_CLI");
     expect([...out, ...err].join(" ")).not.toMatch(/s3cret|rio_app|db\.internal/);
   });
 
-  it("refuses a wrong confirmation too", async () => {
+  it("refuses a connected database whose identity differs from the configured target", async () => {
     let opened = false;
-    const code = await runStaffCli(["reset-password", "--email", "a@example.org"], { env: { ...production, RIO_CONFIRM_STAFF_CLI: "some_other_db" }, out: () => undefined, err: () => undefined }, () => {
+    const err: string[] = [];
+    const code = await runStaffCli(["seed-super-admin"], { env: { ...production, RIO_SUPER_ADMIN_PASSWORD: "A-Strong-Test-Password-9" }, out: () => undefined, err: (line) => err.push(line) }, () => {
       opened = true;
-      throw new Error("must not be opened");
+      return { dialect: "mysql", query: async (sql: string) => ({ rows: sql === "SELECT DATABASE() AS d" ? [{ d: "rio_other" }] : [{ v: "8.0.42" }], affectedRows: 0 }), close: async () => undefined } as unknown as DatabaseAdapter;
     });
     expect(code).toBe(1);
-    expect(opened).toBe(false);
+    expect(opened).toBe(true);
+    expect(err.join(" ")).toContain("connected database is not the one named in DATABASE_URL");
   });
 
   it("reports a configuration problem by variable name without echoing the value", async () => {
     const err: string[] = [];
-    const code = await runStaffCli(["create-admin", "--email", "a@example.org", "--name", "A"], { env: { ...production, ALLOWED_ORIGINS: "http://not-https.example.org", RIO_CONFIRM_STAFF_CLI: "rio_prod" }, out: () => undefined, err: (l) => err.push(l) });
+    const code = await runStaffCli(["create-admin", "--email", "a@example.org", "--name", "A"], { env: { ...production, ALLOWED_ORIGINS: "http://not-https.example.org" }, out: () => undefined, err: (l) => err.push(l) });
     expect(code).toBe(1);
     expect(err.join(" ")).toContain("ALLOWED_ORIGINS");
     expect(err.join(" ")).not.toContain("not-https");

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Bilingual } from "@/components/auth/bilingual";
 import { WinnersList } from "@/components/results/winners-list";
 import { results } from "@/lib/results/messages";
-import { createPublicReader, loadResults, type ResultsState } from "@/lib/results/public";
+import { loadResults } from "@/lib/results/public";
 
 export const metadata: Metadata = { title: "முடிவுகள் · Results" };
 
@@ -13,12 +13,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function ResultsPage() {
-  let state: ResultsState;
-  try {
-    state = await loadResults(createPublicReader());
-  } catch {
-    state = { kind: "unavailable" }; // missing or refused configuration: say nothing about results
-  }
+  const state = await loadResults(); // an unreachable or unreadable API is "unavailable": nothing is said about results
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-[clamp(2rem,6vw,4rem)] sm:px-6 lg:px-8">
       <h1 className="text-[clamp(2rem,6vw,3rem)] font-extrabold">

@@ -12,6 +12,9 @@ export type StaffUser = { id: number; email: string; displayName: string; role: 
 export type StaffSession = { user: StaffUser; role: StaffRole; csrfToken: string };
 type MeBody = { user: StaffUser; csrfToken: string };
 
+/** The /admin area is open to a Super Admin as well as an administrator; every other area needs exactly its own role. */
+const allows = (have: StaffRole, wanted: StaffRole): boolean => have === wanted || (wanted === "admin" && have === "super_admin");
+
 /** An account whose password was set by an administrator (creation or reset) must choose its own before anything else. */
 export const mustChangePassword = (user: Pick<StaffUser, "mustChangePassword">): boolean => user.mustChangePassword;
 
@@ -28,7 +31,7 @@ export const currentStaff = cache(async (): Promise<StaffSession | null> => {
 export async function staffSession(role: StaffRole): Promise<StaffSession | null> {
   try {
     const session = await currentStaff();
-    return session && session.role === role && !mustChangePassword(session.user) ? session : null;
+    return session && allows(session.role, role) && !mustChangePassword(session.user) ? session : null;
   } catch {
     return null;
   }
@@ -43,7 +46,7 @@ export async function requireStaff(role: StaffRole): Promise<StaffSession> {
     session = null;
   }
   if (!session) redirect(staffLoginPath);
-  if (session.role !== role) notFound();
+  if (!allows(session.role, role)) notFound();
   if (mustChangePassword(session.user)) redirect(staffPasswordPath);
   return session;
 }

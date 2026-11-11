@@ -1,11 +1,12 @@
 import { z } from "zod";
 import type { AuthConfig } from "../config.ts";
-import type { DatabaseAdapter } from "../db/adapter.ts";
+import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
 import { DatabaseError } from "../db/errors.ts";
 import { AppError } from "../http/errors.ts";
 import { writeAudit } from "./audit.ts";
 import { dummyHash, generatePassword, hashPassword, needsRehash, passwordProblems, verifyPassword } from "./password.ts";
 import { createRateLimiter, type RateLimiter } from "./rate-limit.ts";
+import { isStaffRole } from "./roles.ts";
 import { createSession, revokeAllSessions, revokeSessionByToken, type StaffRole, type StaffSession } from "./sessions.ts";
 
 // Staff sign-in, password change and the account operations the command line needs. Plain functions over an explicit set of dependencies.
@@ -68,7 +69,7 @@ export async function login(deps: AuthDeps, input: { email: string; password: st
 
   const user = (await db.query<UserRow>("SELECT id, email, password_hash, role, display_name, active, must_change_password FROM staff_users WHERE email = ?", [email])).rows[0];
   const correct = await verifyPassword(input.password, user ? user.password_hash : await dummyHash(auth.argon2));
-  const usable = user !== undefined && correct && Number(user.active) === 1 && (user.role === "admin" || user.role === "judge");
+  const usable = user !== undefined && correct && Number(user.active) === 1 && isStaffRole(user.role);
   if (!usable) {
     if (user) await db.query("UPDATE staff_users SET failed_logins = CASE WHEN failed_logins < 65535 THEN failed_logins + 1 ELSE failed_logins END WHERE id = ?", [Number(user.id)]).catch(() => undefined);
     await audit("staff.login_failed", { reason: !user ? "unknown_account" : !correct ? "bad_password" : "inactive" }, user ? Number(user.id) : null);
@@ -144,12 +145,21 @@ export async function changePassword(deps: AuthDeps, session: StaffSession, inpu
 export type Actor = { type: "system" } | { type: "staff"; id: number };
 const actorFields = (actor: Actor) => ({ actorType: actor.type, actorStaffId: actor.type === "staff" ? actor.id : null }) as const;
 
+/** A Super Admin account can be changed by the system (the command line) or by another Super Admin, never by an ordinary administrator. */
+async function assertMayManage(q: Queryable, actor: Actor, targetId: number): Promise<void> {
+  const target = (await q.query<{ role: string }>("SELECT role FROM staff_users WHERE id = ?", [targetId])).rows[0];
+  if (target?.role !== "super_admin" || actor.type === "system") return;
+  const by = (await q.query<{ role: string }>("SELECT role FROM staff_users WHERE id = ? AND active = 1", [actor.id])).rows[0];
+  if (by?.role !== "super_admin") throw new AppError(403, "forbidden", "You are not allowed to do this.");
+}
+
 /** Gives a member a new random temporary password, forces a change at the next sign-in and ends all their sessions. Returns the password once. */
 export async function resetPassword(deps: AuthDeps, input: { staffId: number; actor: Actor; requestId?: string | null }): Promise<{ temporaryPassword: string }> {
   const temporaryPassword = generatePassword();
   const hash = await hashPassword(temporaryPassword, deps.auth.argon2);
   const now = deps.now();
   await deps.db.transaction(async (tx) => {
+    await assertMayManage(tx, input.actor, input.staffId);
     const updated = await tx.query("UPDATE staff_users SET password_hash = ?, must_change_password = 1, failed_logins = 0, locked_until = NULL WHERE id = ?", [hash, input.staffId]);
     if (updated.affectedRows !== 1) throw new AppError(404, "not_found", "No such staff account.");
     const closed = await revokeAllSessions(tx, input.staffId, now);
@@ -179,4 +189,31 @@ export async function createAdmin(deps: AuthDeps, raw: { email: string; displayN
     if (error instanceof DatabaseError && error.constraint === "unique") throw new AppError(409, "email_taken", "A staff account with this e-mail address already exists.");
     throw error;
   }
+}
+
+export const SUPER_ADMIN_DEFAULTS = { email: "riosuperadmin@gmail.com", displayName: "Rio Super Admin" } as const;
+
+/**
+ * Creates the Super Admin from a password the operator supplies (never generated here, never printed). Safe to repeat: an existing Super
+ * Admin with that e-mail is reported and left alone (its password is NOT reset), and an account with that e-mail under another role is a
+ * collision that is refused. The new account must still choose its own password at the first sign-in.
+ */
+export async function seedSuperAdmin(deps: AuthDeps, raw: { email: string; displayName: string; password: string }): Promise<{ created: boolean }> {
+  const parsed = adminInput.safeParse({ email: raw.email, displayName: raw.displayName });
+  if (!parsed.success) throw new AppError(400, "invalid_request", "The e-mail address or the name is not valid.");
+  const problems = passwordProblems(raw.password, parsed.data.email);
+  if (problems.length > 0) throw new WeakPassword(problems);
+  const hash = await hashPassword(raw.password, deps.auth.argon2);
+  const now = deps.now();
+  return deps.db.transaction(async (tx) => {
+    const existing = (await tx.query<{ id: number | string; role: string }>("SELECT id, role FROM staff_users WHERE email = ?", [parsed.data.email])).rows[0];
+    if (existing) {
+      if (existing.role !== "super_admin") throw new AppError(409, "role_collision", "An account with this e-mail address exists under a different role. Nothing was changed.");
+      return { created: false };
+    }
+    await tx.query("INSERT INTO staff_users (email, password_hash, role, display_name, active, must_change_password, created_at) VALUES (?, ?, 'super_admin', ?, 1, 1, ?)", [parsed.data.email, hash, parsed.data.displayName, now]);
+    const id = Number((await tx.query<{ id: number | string }>("SELECT id FROM staff_users WHERE email = ?", [parsed.data.email])).rows[0]!.id);
+    await writeAudit(tx, now, { actorType: "system", actorStaffId: null, action: "staff.created", entityType: "staff_user", entityId: id, details: { role: "super_admin" } });
+    return { created: true };
+  });
 }

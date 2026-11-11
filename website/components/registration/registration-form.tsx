@@ -147,7 +147,9 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
         <fieldset className="space-y-4">
           <legend className="w-full"><SectionBar icon="edit" m={{ ta: "கேள்விகள்", en: "Competition questions" }} /></legend>
           {questions.map((q) => {
-            const value = draft?.answers?.[q.key];
+            // After a failed save the answers just typed come back with the state, so nothing the parent wrote is lost.
+            const value = state?.answers && q.key in state.answers ? state.answers[q.key] : draft?.answers?.[q.key];
+            const problem = state?.fieldErrors?.[`answer_${q.key}`];
             const input = `answer_${q.key}`;
             const checked = (code: string) => Array.isArray(value) && value.includes(code);
             return (
@@ -163,8 +165,9 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
                     {q.helpTa || q.helpEn ? <p className="mt-1 text-sm text-rio-slate">{q.helpTa}<span lang="en" className="block">{q.helpEn}</span></p> : null}
                     {(q.type === "short_text" || q.type === "paragraph") && <textarea id={input} name={input} defaultValue={typeof value === "string" ? value : ""} maxLength={q.maxLength ?? undefined} rows={q.type === "paragraph" ? 4 : 2} className="field mt-2" />}
                     {q.type === "number" && <input id={input} name={input} type="number" defaultValue={typeof value === "number" ? value : ""} min={q.minNumber ?? undefined} max={q.maxNumber ?? undefined} className="field mt-2" />}
-                    {q.type === "dropdown" && <select id={input} name={input} defaultValue={typeof value === "string" ? value : ""} className="field mt-2"><option value="">Choose / தேர்ந்தெடுக்கவும்</option>{q.options?.map((o) => <option key={o.code} value={o.code}>{o.ta} / {o.en}</option>)}</select>}
+                    {q.type === "dropdown" && <select key={String(value ?? "")} id={input} name={input} defaultValue={typeof value === "string" ? value : ""} className="field mt-2"><option value="">Choose / தேர்ந்தெடுக்கவும்</option>{q.options?.map((o) => <option key={o.code} value={o.code}>{o.ta} / {o.en}</option>)}</select>}
                     {(q.type === "radio" || q.type === "checkboxes") && <div className="mt-2 space-y-2">{q.options?.map((o) => <label key={o.code} className="flex items-center gap-2"><input type={q.type === "radio" ? "radio" : "checkbox"} name={input} value={o.code} defaultChecked={q.type === "checkboxes" ? checked(o.code) : value === o.code} className={check} />{o.ta} / {o.en}</label>)}</div>}
+                    {problem && <FieldError id={`${input}-error`} m={problem} />}
                   </>
                 )}
               </div>

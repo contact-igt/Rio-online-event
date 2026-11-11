@@ -24,6 +24,8 @@ export const staff = {
       notStaff: { en: "This account does not have staff access.", ta: "இந்தக் கணக்கிற்குப் பணியாளர் அணுகல் இல்லை." },
       tooMany: { en: "Too many attempts. Wait a few minutes and try again.", ta: "பல முறை முயன்றுவிட்டீர்கள். சில நிமிடங்கள் கழித்து முயலுங்கள்." },
       unavailable: { en: "Staff sign-in is unavailable right now. Try again later.", ta: "பணியாளர் உள்நுழைவு இப்போது கிடைக்கவில்லை. பின்னர் முயலுங்கள்." },
+      notConfigured: { en: "Staff sign-in is not set up on this site: the address of the server is missing or wrong. Tell the site owner.", ta: "இந்தத் தளத்தில் பணியாளர் உள்நுழைவு அமைக்கப்படவில்லை: சேவையகத்தின் முகவரி இல்லை அல்லது தவறானது. தள உரிமையாளரிடம் தெரிவியுங்கள்." },
+      refused: { en: "The server did not accept this site's request. The site owner must allow this site's address on the server.", ta: "சேவையகம் இந்தத் தளத்தின் கோரிக்கையை ஏற்கவில்லை. தள உரிமையாளர் இந்தத் தளத்தின் முகவரியைச் சேவையகத்தில் அனுமதிக்க வேண்டும்." },
     },
   },
   judge: {

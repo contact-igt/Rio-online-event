@@ -19,6 +19,8 @@ export type Question = {
   maxLength: number | null;
   minNumber: number | null;
   maxNumber: number | null;
+  minChoices: number | null;
+  maxChoices: number | null;
 };
 
 /** What is stored: text for the text and single-choice types, a number, or the chosen option codes for checkboxes. `null` means "no answer". */
@@ -63,6 +65,7 @@ export function checkAnswer(q: Question, raw: unknown): Checked {
       if (new Set(raw).size !== raw.length) return bad("duplicate");
       const codes = q.options?.map((o) => o.code) ?? [];
       if (!raw.every((c) => typeof c === "string" && codes.includes(c))) return bad("not_an_option");
+      if ((q.maxChoices !== null && raw.length > q.maxChoices) || (q.minChoices !== null && raw.length < q.minChoices)) return bad("wrong_number_of_choices");
       return { ok: true, value: codes.filter((c) => raw.includes(c)) }; // stored in the order the options are shown
     }
     case "number": {

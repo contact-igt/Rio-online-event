@@ -12,14 +12,22 @@ describe("parseLogin", () => {
 
 describe("loginErrorCode", () => {
   it.each([
-    [401, "credentials"],
-    [429, "tooMany"],
-    [400, "invalid"],
-    [422, "invalid"],
-    [403, "unavailable"],
-    [500, "unavailable"],
-    [0, "unavailable"],
-  ])("maps %i to %s", (status, code) => {
-    expect(loginErrorCode(status)).toBe(code);
+    [401, undefined, undefined, "credentials"],
+    [429, undefined, undefined, "tooMany"],
+    [400, undefined, undefined, "invalid"],
+    [422, undefined, undefined, "invalid"],
+    [403, undefined, "origin_not_allowed", "refused"],
+    [403, undefined, "csrf_invalid", "unavailable"],
+    [403, undefined, undefined, "unavailable"],
+    [404, undefined, "not_found", "unavailable"],
+    [500, undefined, undefined, "unavailable"],
+    [200, "bad_response", undefined, "unavailable"],
+    [0, "unreachable", undefined, "unavailable"],
+    [0, "timeout", undefined, "unavailable"],
+    [0, "tls", undefined, "unavailable"],
+    [0, "not_configured", undefined, "notConfigured"],
+    [0, "invalid_config", undefined, "notConfigured"],
+  ])("status %i, fault %s, API code %s gives %s", (status, fault, apiCode, code) => {
+    expect(loginErrorCode({ status, fault, apiCode })).toBe(code);
   });
 });

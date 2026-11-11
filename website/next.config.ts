@@ -29,6 +29,8 @@ const distDir = /^\.next(-[a-z]+)*$/.test(process.env.RIO_DIST_DIR ?? "") ? proc
 
 const nextConfig: NextConfig = {
   distDir,
+  // Not a secret: lib/admin-url.ts needs it in the browser to pick the admin link for this environment.
+  env: { APP_ENV: process.env.APP_ENV ?? "" },
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

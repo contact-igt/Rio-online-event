@@ -17,6 +17,10 @@ const run = (...args: string[]) => {
   const r = spawnSync(process.execPath, [cli, ...args], { env: { PATH: process.env.PATH ?? "", NODE_ENV: "test", DB_DIALECT: "sqlite", SQLITE_PATH: sqlitePath }, encoding: "utf8" });
   return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
 };
+const runAt = (path: string, ...args: string[]) => {
+  const r = spawnSync(process.execPath, [cli, ...args], { env: { PATH: process.env.PATH ?? "", NODE_ENV: "test", DB_DIALECT: "sqlite", SQLITE_PATH: path }, encoding: "utf8" });
+  return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
+};
 const tables = (): string[] => {
   try {
     const db = new DatabaseSync(sqlitePath, { readOnly: true });
@@ -27,12 +31,20 @@ const tables = (): string[] => {
     return []; // the file does not exist yet
   }
 };
+const withDb = <T>(path: string, work: (db: DatabaseSync) => T): T => {
+  const db = new DatabaseSync(path);
+  try {
+    return work(db);
+  } finally {
+    db.close();
+  }
+};
 
 describe("db:status and db:ready on a database nobody has touched", () => {
   it("db:status reports every migration as pending and writes nothing: not even the tracking table", () => {
     const r = run("status");
     expect(r.code).toBe(0);
-    expect(r.out.split("\n")).toHaveLength(12);
+    expect(r.out.split("\n")).toHaveLength(13);
     expect(r.out.split("\n").every((line) => line.endsWith("pending"))).toBe(true);
     expect(tables()).toEqual([]);
   });
@@ -45,16 +57,19 @@ describe("db:status and db:ready on a database nobody has touched", () => {
   });
 });
 
-describe("after db:migrate", () => {
-  it("applies every migration and db:status and db:ready agree", () => {
+describe("migrate", () => {
+  it("preflights, applies every migration, validates the schema, and is idempotent", () => {
     const m = run("migrate");
     expect(m.code).toBe(0);
-    expect(m.out).toBe("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012");
+    expect(m.out).toContain("Preflight: 13 pending");
+    expect(m.out).toContain("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0013");
+    expect(m.out).toContain("Schema: valid");
     expect(run("status").out.split("\n").every((line) => line.endsWith("applied"))).toBe(true);
     const ready = run("ready");
     expect(ready.code).toBe(0);
     expect(ready.out).toContain("ready:");
-    expect(run("migrate").out).toBe("Nothing to apply.");
+    expect(run("migrate").out).toContain("Nothing to apply.");
+    expect(run("migrate").out).toContain("Schema: valid");
   });
 
   it("created the 18 application tables and the tracking table (and no other)", () => {
@@ -65,14 +80,36 @@ describe("after db:migrate", () => {
 
   it("db:ready says pending when a migration file is newer than the database, without applying it", () => {
     const db = new DatabaseSync(sqlitePath);
-    db.exec("DELETE FROM rio_migrations WHERE version = '0012'");
+    db.exec("DELETE FROM rio_migrations WHERE version = '0013'");
     db.close();
     const r = run("ready");
     expect(r.code).toBe(1);
     expect(r.out).toBe("not ready: migrations_pending");
     const db2 = new DatabaseSync(sqlitePath, { readOnly: true });
-    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(11); // still not applied
+    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(12); // still not applied
     db2.close();
+  });
+
+  it("refuses an unrecorded partial object before migration and leaves it untouched", () => {
+    const partialPath = join(folder, "partial.test.sqlite");
+    const db = new DatabaseSync(partialPath);
+    db.exec("CREATE TABLE scores (id INTEGER PRIMARY KEY)");
+    db.close();
+    const result = runAt(partialPath, "migrate");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("SCHEMA_DRIFT unexpected_table_scores");
+    const verify = new DatabaseSync(partialPath, { readOnly: true });
+    expect(verify.prepare("SELECT name FROM sqlite_master WHERE name = 'scores'").all()).toHaveLength(1);
+    expect(verify.prepare("SELECT name FROM sqlite_master WHERE name = 'rio_migrations'").all()).toHaveLength(0);
+    verify.close();
+  });
+
+  it("refuses partially executed DDL whose migration record is still pending", () => {
+    withDb(sqlitePath, (db) => db.prepare("DELETE FROM rio_migrations WHERE version = '0013'").run());
+    const result = run("migrate");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("SCHEMA_DRIFT definition_mismatch_table_staff_users");
+    expect(withDb(sqlitePath, (db) => db.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get())).toEqual({ n: 12 });
   });
 });
 
@@ -82,6 +119,6 @@ describe("the usage line", () => {
     expect(r).toMatch(/^v24\./);
     const bad = run("destroy-everything");
     expect(bad.code).toBe(2);
-    expect(bad.out).toContain("db:ready");
+    expect(bad.out).toContain("npm run db:drop");
   });
 });

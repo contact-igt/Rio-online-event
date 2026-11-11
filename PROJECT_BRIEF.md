@@ -1936,7 +1936,7 @@ Scope: backend only. The Next apps still sign staff in through Supabase; nothing
 - **CSRF and origin:** every state-changing request needs an `Origin` from `ALLOWED_ORIGINS` and an `X-CSRF-Token` that is an HMAC of the session token (no extra column or secret). CORS answers only the allowed origins, with credentials, never `*`.
 - **Rate limits:** per IP (30 per 15 min) and per e-mail (8 per 15 min) for login, per account (10 per hour) for password attempts; counters live in `rate_limits` as SHA-256 digests, so all instances share them. Limited callers get 429 whatever the password was.
 - **First login:** an account with `must_change_password` can only reach `/me`, `/password` and `/logout`. Changing the password needs the current one, ends every session of the account and issues a new one.
-- **Bootstrap:** `npm run staff:create-admin -- --email ... --name ...` (refuses when an active admin exists unless `--additional`) and `staff:reset-password`; a random temporary password is printed once and stored only hashed; in production they need `RIO_CONFIRM_STAFF_CLI=<database name>`.
+- **Bootstrap:** `npm run staff:create-admin -- --email ... --name ...` (refuses when an active admin exists unless `--additional`) and `staff:reset-password`; a random temporary password is printed once and stored only hashed; explicit CLI commands require `DB_ALLOWED_DATABASE` to match the live connected target, with no extra confirmation variable.
 - **Audit:** `staff.login`, `staff.login_failed` (reason code only), `staff.login_rate_limited` (once per window), `staff.logout`, `staff.password_changed`, `staff.password_change_failed`, `staff.password_reset`, `staff.created`. No password, token, e-mail address or IP address is ever written.
 - `createApp` takes the opened database; `server.ts` now opens it at start-up (lazy pool) and closes it on shutdown. `/api/v1/health` is unchanged and still touches nothing.
 
@@ -2120,7 +2120,7 @@ Backend: lint, typecheck, build pass; 24 files, 779 tests pass, 2 skipped (MySQL
 ## 49. M5B dynamic question builder (2026-11-10), local only
 
 ### 49.1 Built
-- Migration 0012 (mariadb, mysql, sqlite; append-only): questions.active, min_choices, max_choices. The first schema had no column for them. Existing rows become active with no limits. **Not applied to rio_hospital**: run `npm run db:migrate` in backend/ when approved; until then the new routes fail on that database.
+- Migration 0012 (mariadb, mysql, sqlite; append-only): questions.active, min_choices, max_choices. The first schema had no column for them. Existing rows become active with no limits. Apply pending versioned migrations with `npm run migrate` from `backend/` after configuring `DB_ALLOWED_DATABASE` for the intended target.
 - backend/src/admin/questions.ts and routes.ts. All routes are Administrator only (session, role from the database, CSRF on every change); anonymous 401, judge 403.
   GET /admin/competitions; GET and POST /admin/competitions/:slug/question-sets; GET and DELETE .../:setId; GET .../:setId/preview; POST .../:setId/questions; PATCH and DELETE .../:setId/questions/:questionId; PUT .../:setId/order; POST .../:setId/publish.
 - Options (Tamil and English label, order, selection limits) are edited through the question's own PATCH, so a question is always saved whole.
@@ -2136,3 +2136,25 @@ One draft at a time; a revision starts as a copy of the published set with the s
 
 ### 49.4 Evidence
 Backend: lint, typecheck, build, db:verify pass; 25 files, 828 tests pass, 2 skipped (MySQL-only); 49 new question tests. admin: 294 tests, build pass, lint 0 errors. **MariaDB/MySQL integration tests: BLOCKED** (no RIO_TEST_DATABASE_URL, no .env.test.local). Browser smoke test (disposable SQLite, not rio_hospital): full create, edit, reorder, delete, preview, publish, revision and retire flow; no overflow at 360, 768, 1440.
+
+## 50. Admin and website wired to the Express API; local admin sign-in against Railway (2026-11-11), local only
+
+### 50.1 What was found
+- **Data sources.** The admin's active routes (login, dashboard, settings, question builder) and the website's registration all call the Express API. The remaining Supabase paths on the website were the parent sign-in, `/account`, the session `proxy.ts`, `/results` and `/api/email-sweep`; they are now Express-backed or inert (old links redirect to `/competitions`). A static test in each app (`tests/no-supabase-runtime.test.ts`) follows the imports of every route and fails if any reaches a Supabase client. The legacy Supabase library code (`lib/supabase`, `lib/upload`, `lib/submit`, `lib/email`, `lib/staff`, judging) is unreachable and still present; deleting it is a separate decision.
+- **Why the admin sign-in said "unavailable".** (1) `admin/.env` and `website/.env` set `RIO_BACKEND_API_URL`, but the code read only `RIO_API_ORIGIN`, so both silently used `http://127.0.0.1:4000`. (2) The backend running there had no database configured (`backend/.env.local` does not exist and the scripts no longer read `.env`), so every route except `/health` answered 404, and the login mapped any 404/403/0 to the same message. (3) Pointed at Railway, the API answers `403 origin_not_allowed` to `POST /staff/login` from `http://localhost:3001`, because Railway's `ALLOWED_ORIGINS` does not list it.
+- **Deployed backend is older than the working tree.** Railway answers 404 to `/api/v1/admin/staff`, `/admin/registrations` and `/results`, and the committed `sessions.ts`/`staff.ts` accept only the roles `admin` and `judge`. The `super_admin` role (roles.ts, migration 0013) is uncommitted, so a Super Admin cannot sign in on the deployed build until it is committed and deployed. Railway's `/events` returns 0 competitions (the seed command refuses production by design).
+
+### 50.2 Changes
+- `admin/lib/api/origin.ts` and `website/lib/api/origin.ts` (same file): the one place that decides the API address. Reads `RIO_API_ORIGIN`, also `RIO_BACKEND_API_URL` (alias; the first wins); trims quotes and a trailing slash; tolerates a pasted `/api/v1`; refuses other paths, credentials in the URL, plain http in production (except this machine) and a localhost address on Vercel. **No fallback to localhost except in `next dev`, which logs a warning once.** Tests assert that no other source file names the variables or `127.0.0.1:4000`.
+- `callApi` (admin) and `requestRegistration`, the gateway route and `loadResults` (website) return or log a fixed fault: `not_configured`, `invalid_config`, `unreachable`, `timeout`, `tls`, `bad_response`, plus the API's own error code. One JSON log line per unexpected failure (API host, route without query, status, fault, code, system error code). Never a password, cookie, token, header or body (tested).
+- The login now distinguishes `notConfigured` and `refused` (origin rejected) from "unavailable", with Tamil text.
+- Also fixed on the way: the registration form now enforces required questions on the server against the question version the draft belongs to; a draft of one competition is never edited from another's page; form errors appear under their fields (mobile, consent, each answer); the visitor's address is forwarded so the API's per-address limits do not count the whole site as one visitor. New backend routes `GET /admin/registrations[/:entryCode]` (audited) and `GET /results`; admin Registrations screens.
+
+### 50.3 Evidence
+Live, non-mutating probes of Railway (`/health` 200, `/events` 200 with 0 competitions, `/staff/me` 401, origin probes 403); your running admin and website dev servers log the Railway host after the change. admin: typecheck, lint (0 errors), 346 tests; website: typecheck, lint, 394 tests; backend typecheck. Disposable-database browser suite (`website/e2e-integration`, `npm run test:e2e:integration`): 14 of 19 steps passed before it was stopped; the remaining 5 were not run to completion. MariaDB/MySQL integration tests were not run (SQLite only).
+
+### 50.4 Needed from the owner
+1. Railway: add `http://localhost:3001` to `ALLOWED_ORIGINS` (and `http://localhost:3000` to `PUBLIC_ORIGINS`) for local testing, or test on the deployed admin. Remove them afterwards.
+2. Commit and deploy the backend working tree (Super Admin role, registrations and results routes). Not done here.
+3. Decide how production competitions are created (the seed refuses production; no admin screen creates them).
+4. `.env.example` files hold names and placeholders only; keep the real URL in `.env.local`.

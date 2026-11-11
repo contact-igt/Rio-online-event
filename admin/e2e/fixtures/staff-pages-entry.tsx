@@ -19,9 +19,9 @@ async function main() {
       : mode.startsWith("entry:")
         ? await JudgeEntryPage()
         : mode === "registrations"
-          ? await AdminRegistrationsPage()
+          ? await AdminRegistrationsPage({ searchParams: Promise.resolve({}) })
           : mode.startsWith("registration:")
-            ? await AdminRegistrationPage()
+            ? await AdminRegistrationPage({ params: Promise.resolve({ id: mode.slice("registration:".length) }) })
             : mode === "judges"
               ? await AdminJudgesPage()
               : mode === "nav"

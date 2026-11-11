@@ -3,8 +3,7 @@ import Link from "next/link";
 import { Bilingual } from "@/components/auth/bilingual";
 import { Icon, eventIcon } from "@/components/ui/icon";
 import { DashboardPanel } from "@/components/admin/dashboard-panel";
-import { loadDashboard } from "@/lib/admin/api";
-import { events } from "@/lib/events";
+import { loadCompetitions, loadDashboard } from "@/lib/admin/api";
 import { requireStaff } from "@/lib/staff/auth";
 import { staff } from "@/lib/staff/messages";
 
@@ -14,7 +13,7 @@ export const dynamic = "force-dynamic";
 // The figures come from GET /admin/dashboard (MariaDB through the Express API). If the API is unreachable the panel says so; nothing is invented.
 export default async function AdminPage() {
   const { user } = await requireStaff("admin");
-  const dashboard = await loadDashboard();
+  const [dashboard, competitions] = await Promise.all([loadDashboard(), loadCompetitions()]);
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-[clamp(1.5rem,5vw,3rem)] sm:px-6 lg:px-8">
@@ -48,7 +47,7 @@ export default async function AdminPage() {
               </div>
               <div className="grid gap-x-4 py-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
                 <dt className="text-rio-slate">Role</dt>
-                <dd className="font-semibold text-rio-navy">Administrator</dd>
+                <dd className="font-semibold text-rio-navy">{user.role === "super_admin" ? "Super Admin" : "Administrator"}</dd>
               </div>
             </dl>
           </div>
@@ -60,14 +59,17 @@ export default async function AdminPage() {
               <Icon name="trophy" className="h-7 w-7 text-rio-rose" />
               <Bilingual m={staff.admin.competitions} />
             </h2>
+            {!competitions.ok && <p role="alert" className="mt-4 font-semibold text-rio-error">The competitions could not be loaded. Reload to try again. <span lang="ta" className="block font-medium">போட்டிகளை ஏற்ற முடியவில்லை.</span></p>}
+            {competitions.ok && competitions.data.length === 0 && <p className="mt-4 text-rio-slate">No competitions exist in the database yet. They are added with the seed command, not from this screen.</p>}
             <ul className="mt-4 divide-y divide-rio-navy/10">
-              {events.map((e) => (
+              {(competitions.ok ? competitions.data : []).map((e) => (
                 <li key={e.slug}>
                   <Link href={`/admin/events/${e.slug}`} className="flex min-h-11 items-center justify-between gap-3 py-2 font-semibold text-rio-navy hover:text-rio-rose">
                     <span className="flex min-w-0 items-center gap-3">
                       <Icon name={eventIcon[e.slug] ?? "star"} className="h-6 w-6 shrink-0 text-rio-rose" />
                       <span className="min-w-0 [overflow-wrap:anywhere]">
                         {e.nameTa} / <span lang="en">{e.nameEn}</span>
+                        <span className="block text-sm font-medium text-rio-slate">{e.published ? `Published v${e.published.version}` : "No published questions"}{e.draft ? ` · Draft v${e.draft.version}` : ""}</span>
                       </span>
                     </span>
                     <Icon name="chevron" className="h-4 w-4 shrink-0" />

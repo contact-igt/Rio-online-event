@@ -1,6 +1,7 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers as requestHeaders } from "next/headers";
+import { classifyFetchError, logApiFault, resolveApiOrigin, resolveSiteOrigin } from "@/lib/api/origin";
 
 export type PublicQuestion = {
   key: string;
@@ -57,8 +58,6 @@ export type RegistrationReply<T> = {
   fields?: { field: string; problem: string }[];
 };
 
-const API = (process.env.RIO_API_ORIGIN ?? "http://127.0.0.1:4000").replace(/\/+$/, "");
-const PUBLIC_ORIGIN = process.env.RIO_PUBLIC_ORIGIN ?? "http://localhost:3000";
 const REG_COOKIE_NAMES = new Set(["rio_reg", "__Host-rio_reg"]);
 const PATHS = new Set(["/events", "/settings/public", "/registrations", "/registrations/recover", "/registrations/current"]);
 
@@ -95,24 +94,53 @@ async function relayRecoveryCookies(headers: Headers): Promise<void> {
       const name = first.slice(0, eq);
       const value = first.slice(eq + 1);
       const deleting = /(?:^|;)\s*Max-Age=0(?:;|$)/i.test(header);
-    jar.set({ name, value: deleting ? "" : value, httpOnly: true, sameSite: "strict", secure: PUBLIC_ORIGIN.startsWith("https://"), path: "/", ...(deleting ? { maxAge: 0 } : {}) });
+      const secure = /;\s*Secure\s*(?:;|$)/i.test(header); // the API marks the cookie Secure in production; this site follows it
+    jar.set({ name, value: deleting ? "" : value, httpOnly: true, sameSite: "strict", secure, path: "/", ...(deleting ? { maxAge: 0 } : {}) });
   }
 }
 
 export async function requestRegistration<T>(path: string, init: { method?: "GET" | "POST" | "PATCH"; body?: unknown; csrf?: string; relayCookies?: boolean } = {}): Promise<RegistrationReply<T>> {
   const target = registrationPath(path);
+  const method = init.method ?? "GET";
+  const api = resolveApiOrigin();
+  if (!api.ok) {
+    logApiFault("website", { method, path: target, host: null, status: 0, fault: api.fault, reason: api.reason });
+    throw new Error("api_not_configured"); // callers turn any throw into their "unavailable" state; the log says why
+  }
+  // This site's own address is presented to the API on a change (it must be in the API's PUBLIC_ORIGINS); a read works without it.
+  const site = resolveSiteOrigin("RIO_PUBLIC_ORIGIN");
+  if (!site.ok && method !== "GET") {
+    logApiFault("website", { method, path: target, host: api.host, status: 0, fault: site.fault, reason: site.reason });
+    throw new Error("site_origin_not_configured");
+  }
   const jar = await cookies();
-  const headers = new Headers({ Accept: "application/json", Origin: PUBLIC_ORIGIN });
+  const headers = new Headers({ Accept: "application/json" });
+  if (site.ok) headers.set("Origin", site.origin);
   const cookie = allowedCookieHeader(jar.toString());
   if (cookie) headers.set("Cookie", cookie);
+  // The visitor's address, so the API's per-address limits tell visitors apart instead of counting this server as one (see TRUST_PROXY_HOPS in DEPLOYMENT.md).
+  const visitor = (await requestHeaders()).get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (visitor) headers.set("X-Forwarded-For", visitor);
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
   if (init.csrf) headers.set("X-CSRF-Token", init.csrf);
-  const response = await fetch(`${API}${target}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), cache: "no-store", redirect: "error" });
+  let response: Response;
+  try {
+    response = await fetch(`${api.origin}${target}`, { method, headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10_000) });
+  } catch (error) {
+    const { fault, cause } = classifyFetchError(error);
+    logApiFault("website", { method, path: target, host: api.host, status: 0, fault, cause });
+    throw error;
+  }
   if (init.relayCookies ?? init.method !== "GET") await relayRecoveryCookies(response.headers);
-  const body = (await response.json().catch(() => null)) as T | { error?: { fields?: { field: string; problem: string }[] } } | null;
+  const body = (await response.json().catch(() => null)) as T | { error?: { code?: unknown; fields?: { field: string; problem: string }[] } } | null;
   const error = body && typeof body === "object" && "error" in body ? body.error : undefined;
+  const apiCode = typeof error?.code === "string" && /^[a-z_]{1,40}$/u.test(error.code) ? error.code : undefined;
+  // Quiet for what a parent can cause (closed window, bad field, rate limit); loud for anything that points at the setup.
+  if (response.status >= 500 || response.status === 404 || (response.status === 403 && (apiCode === "origin_not_allowed" || apiCode === "csrf_invalid"))) {
+    logApiFault("website", { method, path: target, host: api.host, status: response.status, apiCode });
+  }
   return { status: response.status, body: response.ok ? (body as T) : null, fields: error?.fields };
 }
 

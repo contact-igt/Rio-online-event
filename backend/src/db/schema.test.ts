@@ -123,14 +123,14 @@ describe.each(dialects)("%s application schema", (dialect: Dialect) => {
 
   // ---- migrations ---------------------------------------------------------------------------------------------------------------------
   describe("migrations", () => {
-    it("creates every application table and the results view, and tracks all twelve migrations", async () => {
+    it("creates every application table and the results view, and tracks all thirteen migrations", async () => {
       const sql =
         dialect === "mysql"
           ? "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()"
           : "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'";
       const names = new Set((await q<{ name: string }>(sql)).rows.map((r) => String(r.name).toLowerCase()));
       for (const table of [...APP_TABLES, "published_winners", TRACKING]) expect(names.has(table), table).toBe(true);
-      expect(Number((await q<{ n: number }>(`SELECT COUNT(*) AS n FROM ${TRACKING}`)).rows[0]!.n)).toBe(12);
+      expect(Number((await q<{ n: number }>(`SELECT COUNT(*) AS n FROM ${TRACKING}`)).rows[0]!.n)).toBe(13);
     });
 
     it("is idempotent: a second run applies nothing", async () => {

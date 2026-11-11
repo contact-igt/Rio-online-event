@@ -18,7 +18,7 @@ export async function staffSignIn(_prev: StaffLoginState, formData: FormData): P
   if (!parsed) return { error: "invalid", email };
 
   const reply = await callApi<{ user?: StaffUser }>("/staff/login", { method: "POST", body: parsed });
-  if (reply.status !== 200 || !reply.body?.user) return { error: loginErrorCode(reply.status), email };
+  if (reply.status !== 200 || !reply.body?.user) return { error: loginErrorCode(reply), email };
 
   await relayCookies(reply.setCookies);
   const user = reply.body.user;

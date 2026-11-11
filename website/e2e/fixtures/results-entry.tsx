@@ -12,9 +12,9 @@ const states: Record<string, ResultsState> = {
   "#published": {
     kind: "published",
     winners: [
-      { eventId: 2, rank: 1, displayName: "Chitra", awardLabel: "First prize" },
-      { eventId: 2, rank: 2, displayName: long, awardLabel: null },
-      { eventId: 4, rank: 1, displayName: "Asha", awardLabel: "A very long award label that must wrap inside its card on a small screen without overflowing" },
+      { eventSlug: "kathai-sollum-kutties", rank: 1, displayName: "Chitra", awardLabel: "First prize" },
+      { eventSlug: "kathai-sollum-kutties", rank: 2, displayName: long, awardLabel: null },
+      { eventSlug: "kutti-pesalar", rank: 1, displayName: "Asha", awardLabel: "A very long award label that must wrap inside its card on a small screen without overflowing" },
     ],
   },
 };

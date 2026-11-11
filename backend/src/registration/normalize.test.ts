@@ -105,7 +105,7 @@ describe("recovery codes and references", () => {
 });
 
 describe("checking answers against their question", () => {
-  const base: Question = { id: 1, key: "q", type: "short_text", position: 1, promptTa: "கே", promptEn: "Q", helpTa: null, helpEn: null, required: false, options: null, maxLength: null, minNumber: null, maxNumber: null };
+  const base: Question = { id: 1, key: "q", type: "short_text", position: 1, promptTa: "கே", promptEn: "Q", helpTa: null, helpEn: null, required: false, options: null, maxLength: null, minNumber: null, maxNumber: null, minChoices: null, maxChoices: null };
   const options = [{ code: "a", ta: "அ", en: "A" }, { code: "b", ta: "ஆ", en: "B" }, { code: "c", ta: "இ", en: "C" }];
   const q = (over: Partial<Question>): Question => ({ ...base, ...over });
 

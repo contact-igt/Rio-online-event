@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.ts";
-import { assertMigrateAllowed, assertResetAllowed, GuardError, requireDatabase, testEnvironment } from "./guards.ts";
+import { assertConfiguredDatabase, assertMigrateAllowed, assertProductionProcessAllowed, assertProductionSetupAllowed, assertResetAllowed, GuardError, requireDatabase, testEnvironment } from "./guards.ts";
 
 const mysqlEnv = (over: Record<string, string> = {}) => {
   const production = over.NODE_ENV === "production";
@@ -8,6 +8,7 @@ const mysqlEnv = (over: Record<string, string> = {}) => {
     DB_DIALECT: "mysql",
     DATABASE_URL: production ? "mysql://u:p@db.internal:3306/rio" : "mysql://u:p@127.0.0.1:3306/rio",
     DB_ALLOWED_HOST: production ? "db.internal" : "127.0.0.1",
+    DB_ALLOWED_DATABASE: "rio",
     ALLOWED_ORIGINS: "https://admin.example.org", // required by the config in production once a database is configured
     ...(production ? { APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio" } : {}),
     ...over,
@@ -16,18 +17,47 @@ const mysqlEnv = (over: Record<string, string> = {}) => {
 
 describe("assertMigrateAllowed", () => {
   it("lets development and test migrate without confirmation", () => {
-    expect(() => assertMigrateAllowed(loadConfig(mysqlEnv()), {})).not.toThrow();
+    expect(() => assertMigrateAllowed(loadConfig(mysqlEnv()), { DB_ALLOWED_DATABASE: "rio" })).not.toThrow();
   });
 
-  it("in production demands the database name in RIO_CONFIRM_MIGRATE", () => {
+  it("uses DB_ALLOWED_DATABASE as the sole configured target identity", () => {
     const config = loadConfig(mysqlEnv({ NODE_ENV: "production" }));
-    expect(() => assertMigrateAllowed(config, {})).toThrow(GuardError);
-    expect(() => assertMigrateAllowed(config, { RIO_CONFIRM_MIGRATE: "yes" })).toThrow(GuardError);
-    expect(() => assertMigrateAllowed(config, { RIO_CONFIRM_MIGRATE: "rio" })).not.toThrow();
+    expect(() => assertMigrateAllowed(config, { DB_ALLOWED_DATABASE: "rio" })).not.toThrow();
+    expect(() => assertMigrateAllowed(config, {})).toThrow(/DB_ALLOWED_DATABASE is required/);
+    expect(() => assertMigrateAllowed(config, { DB_ALLOWED_DATABASE: "other" })).toThrow(/does not match/);
   });
 
   it("refuses to run with no database configured", () => {
     expect(() => requireDatabase(loadConfig({}))).toThrow(/No database is configured/);
+  });
+});
+
+describe("assertConfiguredDatabase", () => {
+  it("requires the allowed name to match the configured target", () => {
+    const config = loadConfig(mysqlEnv());
+    expect(() => assertConfiguredDatabase(config, {})).toThrow(/DB_ALLOWED_DATABASE is required/);
+    expect(() => assertConfiguredDatabase(config, { DB_ALLOWED_DATABASE: "other" })).toThrow(/does not match/);
+    expect(assertConfiguredDatabase(config, { DB_ALLOWED_DATABASE: "rio" })).toMatchObject({ database: "rio" });
+  });
+});
+
+describe("assertProductionSetupAllowed", () => {
+  it("requires production for the process and the explicit app environment", () => {
+    const development = loadConfig(mysqlEnv());
+    expect(() => assertProductionSetupAllowed(development, { NODE_ENV: "development", APP_ENV: "development" })).toThrow(GuardError);
+
+    const production = loadConfig(mysqlEnv({ NODE_ENV: "production" }));
+    expect(() => assertProductionSetupAllowed(production, { NODE_ENV: "production", APP_ENV: "production", DB_ALLOWED_DATABASE: "rio" })).not.toThrow();
+    expect(() => assertProductionSetupAllowed(production, { NODE_ENV: "production", APP_ENV: "development" })).toThrow(GuardError);
+  });
+});
+
+describe("assertProductionProcessAllowed", () => {
+  it("requires production for read-only production CLI commands", () => {
+    const production = loadConfig(mysqlEnv({ NODE_ENV: "production" }));
+    expect(() => assertProductionProcessAllowed(production, { NODE_ENV: "production", APP_ENV: "production" })).not.toThrow();
+    expect(() => assertProductionProcessAllowed(production, { NODE_ENV: "production", APP_ENV: "development" })).toThrow(GuardError);
+    expect(() => assertProductionProcessAllowed(loadConfig(mysqlEnv()), { NODE_ENV: "development", APP_ENV: "development" })).toThrow(GuardError);
   });
 });
 

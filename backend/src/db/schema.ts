@@ -12,7 +12,7 @@ type Flag = 0 | 1;
 type FlagDefault = ColumnType<Flag, Flag | undefined, Flag>;
 type DatabaseGenerated = ColumnType<1 | null, never, never>;
 
-export type StaffRole = "admin" | "judge";
+export type StaffRole = "super_admin" | "admin" | "judge";
 export type SubmissionStatus = "draft" | "held" | "finalized" | "withdrawn" | "rejected";
 export type QuestionType = "short_text" | "paragraph" | "dropdown" | "radio" | "checkboxes" | "number" | "instruction";
 export type QuestionSetStatus = "draft" | "published" | "retired";

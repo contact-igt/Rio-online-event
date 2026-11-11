@@ -63,6 +63,7 @@ export const createBody = z.strictObject({
   guardianEmail: email.nullish(),
   guardianConsent,
   mediaConsent: mediaConsent.nullish(),
+  answers: answers.nullish(),
 });
 export type CreateInput = z.infer<typeof createBody>;
 

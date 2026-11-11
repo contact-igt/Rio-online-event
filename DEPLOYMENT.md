@@ -12,12 +12,12 @@ Three folders, each a complete project of its own (own `package.json`, `package-
 |---|---|---|---|
 | `website/` | public site for parents: landing, competitions, registration, sign-in, account, results, upload, e-mail sweep | `npm run dev` (port 3000) | Vercel project 1, root directory `website` |
 | `admin/` | admin panel, judge panel and staff sign-in (`/admin`, `/judge`, `/staff`) | `npm run dev` (port 3001) | Vercel project 2, root directory `admin`, its own (sub)domain, for example `admin.<domain>` |
-| `backend/` | Node.js + Express + TypeScript API. **M1:** `GET /api/v1/health`, request ids, security headers, body limit, safe logging, graceful shutdown. **M2A:** MySQL 8 / SQLite database layer (Kysely, mysql2, `node:sqlite`), versioned migrations with checksums, environment guards. **M2B: 18 application tables and a results view (MySQL and SQLite migrations, tested), no seed data. **M3: staff sign-in** (`/api/v1/staff/login|logout|me|password`, Argon2id, database sessions, CSRF, rate limits, `staff:create-admin` command), not yet used by the Next apps. No registration yet** | `npm run dev` (port 4000) | **not deployed**; planned as a Railway service with root directory `backend` (no Railway resource exists) |
+| `backend/` | Node.js + Express + TypeScript API. **M1:** `GET /api/v1/health`, request ids, security headers, body limit, safe logging, graceful shutdown. **M2A:** MySQL-protocol / SQLite database layer (Kysely, mysql2, `node:sqlite`), versioned migrations with checksums, environment guards. **M2B: 18 application tables and a results view (MariaDB, MySQL and SQLite migration folders), no seed data. **M3: staff sign-in** (`/api/v1/staff/login|logout|me|password`, Argon2id, database sessions, CSRF, rate limits, `staff:create-admin` command), not yet used by the Next apps. No registration yet** | `npm run dev` (port 4000) | Railway service with root directory `backend` |
 | `database/` | Supabase migrations, seed, templates, SQL tests and the guarded DEV tooling | `npm test`, `npm run db:dev:*` | not deployed; migrations are applied as in section 6 |
 
-Backend commands (inside `backend/`; Node 24): `npm install`, then `npm run dev` (reads git-ignored `.env.local` if present, restarts on change), `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm start` (runs `dist/`). Database scripts: `npm run db:migrate`, `db:status`, `db:verify` (also run by CI; checks that `migrations/mysql` and `migrations/sqlite` match), and `db:reset:test` (drops every table of the TEST database only). Variables: see `backend/.env.example`. For Railway leave `HOST` unset (it binds `0.0.0.0` when `NODE_ENV=production`) and let Railway provide `PORT`.
+Backend commands (inside `backend/`; Node 24): `npm install`, then `npm run dev` (reads git-ignored `.env.local` if present, restarts on change), `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm start` (runs `dist/`). Database scripts: `npm run migrate` (checks database identity and schema, then applies pending versioned migrations), `npm run db:status` (read-only history and drift report), `npm run db:drop` (disposable loopback development databases only, with a typed database-name confirmation), and `npm run db:verify` (also run by CI; checks that migration dialect folders match). Variables: see `backend/.env.example`. For Railway leave `HOST` unset (it binds `0.0.0.0` when `NODE_ENV=production`) and let Railway provide `PORT`.
 
-Backend database rules (enforced by `backend/src/config.ts`, tested): `sqlite` is refused in production; a MySQL `DATABASE_URL` must have a host equal to `DB_ALLOWED_HOST`; under `NODE_ENV=test` the database must be local and named `*_test` (or SQLite `:memory:`/`*.test.sqlite`), and tests read only `RIO_TEST_*` variables, never `DATABASE_URL`; a `*_test` database is refused outside tests and a loopback database is refused in production. A production migration runs only with `RIO_CONFIRM_MIGRATE=<database name>` for that command. Local development database name: `rio_hospital` on the XAMPP MariaDB (`DB_ENGINE=mariadb`, migrations in `backend/migrations/mariadb/`; no Docker is used or needed); automated tests never run on `rio_hospital`: they create and drop tables, so the configuration refuses any test database whose name does not end in `_test`, and there is no standing test database (see `backend/LOCAL_DEVELOPMENT.md`). Production is MySQL 8 (`DB_ENGINE=mysql`, the default; `mariadb` is refused in production). Full workflow: `backend/LOCAL_DEVELOPMENT.md`.
+Backend database rules (enforced by `backend/src/config.ts`, tested): `sqlite` is refused in production; a MySQL-protocol `DATABASE_URL` must have a host equal to `DB_ALLOWED_HOST`; under `NODE_ENV=test` the database must be local and named `*_test` (or SQLite `:memory:`/`*.test.sqlite`), and tests read only `RIO_TEST_*` variables, never `DATABASE_URL`; a `*_test` database is refused outside tests and a loopback database is refused in production. Explicit migration and staff CLI commands require `DB_ALLOWED_DATABASE` to match the configured and actual connected database; they do not need separate confirmation environment variables. Local development database name: `rio_hospital` on the XAMPP MariaDB (`DB_ENGINE=mariadb`, migrations in `backend/migrations/mariadb/`; no Docker is used or needed); automated tests never run on `rio_hospital`: they create and drop tables, so the configuration refuses any test database whose name does not end in `_test`, and there is no standing test database (see `backend/LOCAL_DEVELOPMENT.md`). Production is hosted MariaDB (`DB_ENGINE=mariadb`) and additionally requires `DB_ACCEPT_MARIADB_IN_PRODUCTION=<approved database name>`. Full workflow: `backend/LOCAL_DEVELOPMENT.md`.
 
 Each of the website and the admin carries its own copy of the small amount of code both need (Supabase clients, staff and auth checks, schemas, styles).
 A change to one of those files (`lib/supabase`, `lib/auth`, `lib/staff/auth|messages|paths`, `lib/registration/consent|date|settings`, `lib/events.ts`, `lib/storage`,
@@ -57,6 +57,28 @@ fixture suites were not repeated.
 
 ## 2. Environment variables
 
+### The three-app wiring (Express API + MariaDB): the settings every deployment needs
+
+None of these has a default in any environment. A missing or unusable value is an error that names the variable (server log; the sign-in page says "not set up on this site"). None is a secret, and none is `NEXT_PUBLIC_` except the website's link to the admin site.
+
+**One `.env` per app, no other env file.** `admin/.env` and `website/.env` hold both environments side by side; the code picks the pair by mode, so nothing is switched by hand: `npm run dev` reads the `_DEVELOPMENT` names, a production build (`npm run build`, `npm start`, Vercel) reads the `_PRODUCTION` names. A plain name without a suffix, when set (a Vercel setting, a test), wins.
+
+| Application | Variable (suffix `_DEVELOPMENT` / `_PRODUCTION`) | Development value | Production value | Where it is read from |
+|---|---|---|---|---|
+| Website | `RIO_BACKEND_API_URL` | `http://localhost:4000` | `https://rio-online-event-production.up.railway.app` | `website/.env` locally; Vercel (website project) |
+| Website | `RIO_PUBLIC_ORIGIN` (this site; must be in the API's `PUBLIC_ORIGINS`) | `http://localhost:3000` | `https://rio-online-event-gia5.vercel.app` | `website/.env` locally; Vercel |
+| Website | `NEXT_PUBLIC_ADMIN_URL` (links to the admin site) | `http://localhost:3001` | `https://rio-online-event-vuw2.vercel.app` | `website/.env` locally; Vercel |
+| Admin | `RIO_BACKEND_API_URL` | `http://localhost:4000` | `https://rio-online-event-production.up.railway.app` | `admin/.env` locally; Vercel (admin project) |
+| Admin | `RIO_ADMIN_ORIGIN` (this site; must be in the API's `ALLOWED_ORIGINS`) | `http://localhost:3001` | `https://rio-online-event-vuw2.vercel.app` | `admin/.env` locally; Vercel |
+| Backend | `ALLOWED_ORIGINS` / `PUBLIC_ORIGINS` | `http://localhost:3001` / `http://localhost:3000` | `https://rio-online-event-vuw2.vercel.app` / `https://rio-online-event-gia5.vercel.app` | `backend/.env.development.local` locally (read by `npm run dev` and the `*:dev` commands, never `backend/.env`); Railway variables |
+| Backend | `NODE_ENV` `APP_ENV` `DB_*` `DATABASE_URL` `TRUST_PROXY_HOPS` | SQLite or XAMPP MariaDB (see `backend/LOCAL_DEVELOPMENT.md`) | see "Backend database variables" below; `TRUST_PROXY_HOPS=1` behind Railway | Railway variables only (`npm start` reads no file) |
+
+Rules the code enforces (tests in `*/lib/api/origin.test.ts`, `*/tests/no-supabase-runtime.test.ts`, `backend/src/package-scripts.test.ts`):
+- Under `next dev` a hosted API address is refused, so Production can never be reached from a developer machine by a stray value. A local `next build` + `next start` is a production-mode run and reads the `_PRODUCTION` lines (the real API): use it deliberately.
+- On Vercel an address that points at the machine itself (`localhost`, `127.0.0.1`) is refused, and plain `http://` to a hosted address is refused in production. A trailing `/api/v1` on the API address is removed.
+- The old name `RIO_API_ORIGIN` is no longer read.
+- **Vercel does not see the git-ignored `.env`.** Before this code is deployed set, in each Vercel project (Production scope), the same names with the `_PRODUCTION` suffix (or the plain names): the API address on both, `RIO_PUBLIC_ORIGIN` and `NEXT_PUBLIC_ADMIN_URL` on the website, `RIO_ADMIN_ORIGIN` on the admin site. `NEXT_PUBLIC_ADMIN_URL` is read at build time, so redeploy after setting it. Without the origin settings, sign-in and registration changes stop with a clear error instead of presenting `localhost` to the API.
+
 Set in Vercel **Production** scope only. Nothing here exists in any production environment yet (all are "missing"). Values are never written in this repo.
 
 | Name | Secret | Needed at build | Rule |
@@ -89,15 +111,16 @@ Production reads these from the platform's environment settings and never from a
 NODE_ENV=production
 APP_ENV=production                      # must equal NODE_ENV
 DB_DIALECT=mysql
-DB_ENGINE=mysql                         # explicit; mariadb is refused in production
+DB_ENGINE=mariadb                       # explicit; production requires explicit MariaDB acceptance
 DB_ALLOWED_HOST=<private host of the hosted MySQL 8>
 DB_ALLOWED_DATABASE=<approved production database name>
 DATABASE_URL=mysql://<user>:<password>@<same host as DB_ALLOWED_HOST>:3306/<same name as DB_ALLOWED_DATABASE>
+DB_ACCEPT_MARIADB_IN_PRODUCTION=<same name as DB_ALLOWED_DATABASE>
 ALLOWED_ORIGINS=https://<admin site>
 PUBLIC_ORIGINS=https://<public site>
 ```
 
-Rules enforced at start-up (tested in `backend/src/environment.test.ts`): `APP_ENV` must equal `NODE_ENV`; a loopback host, `mariadb`, `sqlite` and a `*_test` database are refused in production; `DB_ALLOWED_DATABASE` must equal the database in `DATABASE_URL`; the connected server must be MySQL (not MariaDB) and `SELECT DATABASE()` must return the approved name. There is no fallback between environments: a missing value is an error. The build (`npm run build`) needs none of these variables, and the server never migrates on start; a production migration is a separate, explicit `RIO_CONFIRM_MIGRATE=<database name> npm run db:migrate`.
+Rules enforced at start-up (tested in `backend/src/environment.test.ts`): `APP_ENV` must equal `NODE_ENV`; a loopback host, `sqlite` and a `*_test` database are refused in production; `DB_ALLOWED_DATABASE` must equal the database in `DATABASE_URL`; the connected server must match `DB_ENGINE` and `SELECT DATABASE()` must return the approved name. MariaDB in production is accepted only when `DB_ACCEPT_MARIADB_IN_PRODUCTION` names that same approved database. There is no fallback between environments: a missing value is an error. The build (`npm run build`) needs none of these variables, and the server never migrates on start. Explicit production database commands read `backend/.env` when invoked and validate `DB_ALLOWED_DATABASE` against the live connection.
 
 ## 3. Production resources needed
 

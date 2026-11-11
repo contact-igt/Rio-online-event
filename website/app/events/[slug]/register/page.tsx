@@ -33,9 +33,13 @@ export default async function RegisterPage({ params, searchParams }: { params: P
   const remote = events?.find((item) => item.slug === slug);
   if (!remote) return unavailable(slug, events ? "This competition has not been configured yet." : "Registration is temporarily unavailable.");
   const event = eventFor(slug, remote)!;
-  const open = Boolean(settings?.registrationOpen && remote.questionSet);
+  // A saved draft belongs to one competition. On another competition's page it is only offered as a link; this page's form never edits it.
+  const view = current?.view && current.view.event.slug === slug ? current.view : null;
+  const elsewhere = current?.view && !view ? current.view : null;
+  // An existing draft keeps the question version it was created with; only a new entry gets the set published now.
+  const questionSet = view ? view.questionSet : remote.questionSet;
+  const open = Boolean(settings?.registrationOpen && questionSet);
   const consent = settings?.guardianConsentVersion ? getConsentCopy(settings.guardianConsentVersion) : null;
-  const view = current?.view ?? null;
   const editable = view?.editable === true;
   const query = await searchParams;
   const recoveryNotice = (await cookies()).get("rio_recovery_notice")?.value ?? null;
@@ -57,11 +61,12 @@ export default async function RegisterPage({ params, searchParams }: { params: P
           <div className="min-w-0 space-y-6">
             {query.saved === "1" && recoveryNotice && <div role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4"><p className="font-display text-xl font-bold text-rio-ok">வரைவு சேமிக்கப்பட்டது <span lang="en" className="font-medium">/ Draft saved</span></p><p className="mt-2">Keep this recovery code safe. It is the only way to reopen this draft.</p><p className="mt-3 rounded-xl bg-rio-mist p-3 font-mono text-lg font-bold tracking-widest text-rio-navy" aria-label="Recovery code">{recoveryNotice}</p></div>}
             {!open && <div className="card-soft p-5"><h2 className="text-2xl font-bold">{reg.closed.title.ta}<span lang="en" className="block text-rio-slate">{reg.closed.title.en}</span></h2><p className="mt-2"><Bilingual m={reg.closed.body} /></p></div>}
+            {elsewhere && <div className="card-soft p-5"><p className="font-semibold text-rio-navy">You have a saved draft for another competition: {elsewhere.event.nameEn}.<span lang="ta" className="block">வேறு போட்டிக்கான வரைவு உங்களிடம் உள்ளது: {elsewhere.event.nameTa}.</span></p><Link href={`/events/${elsewhere.event.slug}/register`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">Open that draft / அந்த வரைவைத் திற</Link></div>}
             {!view && <RecoveryForm event={event.slug} />}
-            {open && consent && remote.questionSet && (!view || editable) && <div className="card p-5 sm:p-7"><div className="flex items-start gap-4"><span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rio-blush text-rio-rose"><Icon name="edit" className="h-7 w-7" /></span><div><h2 className="text-2xl font-bold">{(view ? reg.form.editTitle : reg.title).ta} <span lang="en">/ {(view ? reg.form.editTitle : reg.title).en}</span></h2><p className="text-rio-slate"><Bilingual m={reg.form.intro} /></p></div></div><div className="mt-5"><RegistrationForm key={view?.reference ?? "new"} event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }} questions={remote.questionSet.questions} consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }} draft={draft} /></div></div>}
+            {open && consent && questionSet && (!view || editable) &&<div className="card p-5 sm:p-7"><div className="flex items-start gap-4"><span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rio-blush text-rio-rose"><Icon name="edit" className="h-7 w-7" /></span><div><h2 className="text-2xl font-bold">{(view ? reg.form.editTitle : reg.title).ta} <span lang="en">/ {(view ? reg.form.editTitle : reg.title).en}</span></h2><p className="text-rio-slate"><Bilingual m={reg.form.intro} /></p></div></div><div className="mt-5"><RegistrationForm key={view?.reference ?? "new"} event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }} questions={questionSet.questions} consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }} draft={draft} /></div></div>}
             {view && !editable && <p className="font-semibold text-rio-navy">This draft can no longer be edited. / இந்த வரைவை இனி திருத்த முடியாது.</p>}
             {view && <section className="card p-4 sm:p-6"><h2 className="text-xl font-bold">Next steps / அடுத்த படிகள்</h2><p className="mt-2 text-rio-slate">Video upload and final submission will be available in a later stage. / வீடியோ பதிவேற்றமும் இறுதி சமர்ப்பிப்பும் அடுத்த கட்டத்தில் கிடைக்கும்.</p></section>}
-            {remote.questionSet === null && <p className="rounded-2xl bg-rio-mist p-4 text-rio-slate">Questions are not published for this competition yet. / இந்தப் போட்டிக்கான கேள்விகள் இன்னும் வெளியிடப்படவில்லை.</p>}
+            {!view && remote.questionSet === null && <p className="rounded-2xl bg-rio-mist p-4 text-rio-slate">Questions are not published for this competition yet. / இந்தப் போட்டிக்கான கேள்விகள் இன்னும் வெளியிடப்படவில்லை.</p>}
             <Link href={`/events/${event.slug}`} className="inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">← {event.nameTa}</Link>
           </div>
         </div>

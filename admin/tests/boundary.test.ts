@@ -85,10 +85,10 @@ describe("the upload master switch (RIO_UPLOADS_ENABLED) is enforced on the serv
     }
   });
 
-  it("the page decides the upload step through uploadStep (which needs the switch) and never from the raw configuration", () => {
+  it("the M6A registration page keeps upload as a later-stage placeholder and never imports legacy upload actions", () => {
     const page = get("app/events/[slug]/register/page.tsx");
-    expect(page).toContain("uploadStep(");
-    expect(page).not.toMatch(/uploadsConfigured|uploadsAvailable|R2_/);
+    expect(page).toContain("Video upload and final submission will be available in a later stage");
+    expect(page).not.toMatch(/lib\/upload\/|video-actions|uploadsConfigured|uploadsAvailable|R2_/);
   });
 
   it("the content security policy only names the bucket host when the switch is on", () => {
@@ -174,10 +174,10 @@ describe("final submission (RIO_FINALIZE_ENABLED) is enforced on the server and 
     expect(server).toContain('=== "yes"');
   });
 
-  it("the page decides the submit step through submitStep (which needs the switch), not from raw configuration", () => {
+  it("the M6A registration page keeps final submission disabled and never imports the legacy submit action", () => {
     const page = get("app/events/[slug]/register/page.tsx");
-    expect(page).toContain("submitStep(");
-    expect(page).not.toMatch(/process\.env\.RIO_FINALIZE_ENABLED/);
+    expect(page).toContain("Video upload and final submission will be available in a later stage");
+    expect(page).not.toMatch(/lib\/submit\/|submit-actions|process\.env\.RIO_FINALIZE_ENABLED/);
   });
 
   it("client components import only types from the final-submission service, and never the bucket or database clients", () => {
@@ -402,12 +402,11 @@ describe("participation e-mail (M7)", () => {
     expect(actions.indexOf("finalizeEntry(")).toBeLessThan(actions.indexOf("queueConfirmation("));
   });
 
-  it("the retry endpoint answers 404 unless sending is available and the secret matches, using a constant-time comparison", () => {
+  it("the retired retry endpoint is closed: a plain 404 that reads no service, secret or request data", () => {
     const route = code(get("app/api/email-sweep/route.ts"));
-    expect(route).toContain("timingSafeEqual");
-    expect(route).toContain("emailAvailable()");
+    expect(route).toContain("status: 404");
     expect(route).toContain("force-dynamic");
-    expect(route).not.toMatch(/searchParams|\.json\(\)|request\.body/); // nothing from the request is used except the header
+    expect(route).not.toMatch(/import |process\.env|supabase|searchParams|\.json\(\)|request\.body|timingSafeEqual/i);
   });
 
   it(".env.example documents the switch as off, and CLAUDE.md's rule that nothing sends until configured is kept in the template", () => {
