@@ -38,14 +38,13 @@ const texts: Record<string, ConsentCopy> = {
 
 /** The wording for a version, or null if the app does not know it (registration then stays closed). */
 export function getConsentCopy(version: string | null | undefined): ConsentCopy | null {
-  if (!version) return null;
-  const base = texts[version] ?? texts[PROVISIONAL_VERSION];
-  return base ? { ...base, version } : null;
+  return version ? (texts[version] ?? null) : null;
 }
 
-// Allowlisted consent versions for activating registration.
-const APPROVED_ACTIVATION_VERSIONS: readonly string[] = ["v0-provisional", "v1", "Test"];
+// Versions that may open registration, by exact name, each only with its own wording above. On 2026-11-11 the owner chose to open with the
+// provisional wording until the hospital's approved text arrives; add that as a new version here and in the backend allowlist, together.
+const APPROVED_ACTIVATION_VERSIONS: readonly string[] = [PROVISIONAL_VERSION];
 
 export function consentActivationState(version: string | null | undefined): "ready" | "unavailable" {
-  return version && (APPROVED_ACTIVATION_VERSIONS.includes(version) || version.length > 0) && getConsentCopy(version) ? "ready" : "unavailable";
+  return version && APPROVED_ACTIVATION_VERSIONS.includes(version) && getConsentCopy(version) ? "ready" : "unavailable";
 }
