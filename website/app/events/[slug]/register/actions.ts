@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { registerPath } from "@/lib/auth/paths";
 import { getEvent } from "@/lib/events";
-import { currentRegistration, createRegistration, publicSettings, recoverRegistration, updateRegistration, type PublicQuestion } from "@/lib/registration/express";
+import { currentRegistration, createRegistration, publicSettings, recoverRegistration, updateRegistration } from "@/lib/registration/express";
 import { reg, type Msg } from "@/lib/registration/messages";
 import { parseEventSlug } from "@/lib/auth/schemas";
 import { normalizeMobile } from "@/lib/registration/schemas";
@@ -132,6 +132,3 @@ export async function recoverDraft(_prev: SaveState, formData: FormData): Promis
   redirect(registerPath(slug));
 }
 
-export function questionInputName(question: PublicQuestion): string {
-  return `answer_${question.key}`;
-}
