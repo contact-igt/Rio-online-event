@@ -81,7 +81,7 @@ describe("submitEntry", () => {
   });
 
   it("uses the competition of the page's slug, and refuses an unknown or malformed slug with no database call", async () => {
-    expect((await actions.submitEntry(ask({ slug: "tamilil-sollu" }))).ok).toBe(false); // the entry is in competition 4: a different slug does not match
+    expect((await actions.submitEntry(ask({ slug: "thirukkural-thiramai" }))).ok).toBe(false); // the entry is in competition 4: a different slug does not match
     expect(h.deps.store.head).not.toHaveBeenCalled();
     for (const slug of ["nope", "", 5, null, undefined, "../x"]) {
       h.deps.db.check.mockClear();

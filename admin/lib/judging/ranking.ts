@@ -16,11 +16,13 @@ export type Ranked = {
   drafts: number;
   /** Every assigned judge has a final mark (and at least one judge is assigned). Only complete entries are ranked. */
   complete: boolean;
+  /** Sum of final marks from all assigned judges, or null when no final mark exists. */
+  total: number | null;
   /** Mean of the final marks, two decimals, or null when no final mark exists. */
   average: number | null;
   /** Standard competition ranking (1, 2, 2, 4) among complete entries; null when incomplete. */
   rank: number | null;
-  /** Another complete entry has exactly the same average: the administrator must decide. */
+  /** Another complete entry has exactly the same total / average: the administrator must decide. */
   tie: boolean;
 };
 
@@ -40,6 +42,7 @@ export function rankEntries(submissionIds: readonly string[], assignments: reado
       finalScores: final.length,
       drafts: mine.filter((s) => s.status === "draft").length,
       complete: judges.size > 0 && final.length === judges.size,
+      sum100: final.length ? sum : null,
       avg100,
     };
   });
@@ -51,6 +54,7 @@ export function rankEntries(submissionIds: readonly string[], assignments: reado
       finalScores: r.finalScores,
       drafts: r.drafts,
       complete: r.complete,
+      total: r.sum100 === null ? null : r.sum100 / 100,
       average: r.avg100 === null ? null : r.avg100 / 100,
       rank: r.complete ? 1 + complete.filter((o) => o.avg100! > r.avg100!).length : null,
       tie: r.complete && complete.some((o) => o.submissionId !== r.submissionId && o.avg100 === r.avg100),
@@ -58,10 +62,10 @@ export function rankEntries(submissionIds: readonly string[], assignments: reado
     .sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || (b.average ?? -1) - (a.average ?? -1) || a.submissionId.localeCompare(b.submissionId));
 }
 
-/** Marks as typed by a judge: 0 to 100, at most two decimals. Returns null for anything else. */
-export function parseMarks(raw: unknown): number | null {
+/** Marks as typed by a judge: 0 to max (default 100, or 10), at most two decimals. Returns null for anything else. */
+export function parseMarks(raw: unknown, max = 100): number | null {
   const text = typeof raw === "number" ? String(raw) : typeof raw === "string" ? raw.trim() : "";
   if (!/^\d{1,3}(\.\d{1,2})?$/.test(text)) return null;
   const n = Number(text);
-  return n >= 0 && n <= 100 ? n : null;
+  return n >= 0 && n <= max ? n : null;
 }

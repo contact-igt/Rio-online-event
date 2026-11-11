@@ -5,17 +5,15 @@ const slugs = [
   "kathai-sollum-kutties",
   "thirukkural-thiramai",
   "kutti-pesalar",
-  "tamil-kalaikoodam",
-  "tamilil-sollu",
 ];
 
 const noHorizontalScroll = () => document.documentElement.scrollWidth <= window.innerWidth;
 const allImagesLoaded = () => Array.from(document.images).every((img) => img.complete && img.naturalWidth > 0);
 
-test("home page lists six competitions that link to their routes", async ({ page }) => {
+test("home page lists the four competitions that link to their routes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("மழலைத் தமிழே!");
-  await expect(page.locator("#competitions ol > li")).toHaveCount(6);
+  await expect(page.locator("#competitions ol > li")).toHaveCount(4);
   for (const slug of slugs) await expect(page.locator(`#competitions a[href="/events/${slug}"]`)).toHaveCount(1);
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); // the footer logo loads lazily
   await page.waitForLoadState("networkidle");
@@ -39,7 +37,7 @@ test("unknown event returns 404", async ({ page }) => {
 test("age filter on the competitions page marks the fitting competitions", async ({ page }) => {
   await page.goto("/competitions");
   await page.getByRole("button", { name: "5", exact: true }).click();
-  await expect(page.getByRole("status").first()).toContainText("3 of 6 competitions accept age 5");
+  await expect(page.getByRole("status").first()).toContainText("2 of 4 competitions accept age 5");
 });
 
 test("security headers are present and the old poster is no longer served", async ({ request }) => {

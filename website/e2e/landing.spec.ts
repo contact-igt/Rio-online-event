@@ -33,12 +33,12 @@ test.describe("structure and content", () => {
     await expect(facts).toContainText("30 – 90 sec");
     await expect(facts).toContainText("Online");
     const strip = page.locator("ul[aria-label='Event facts']");
-    await expect(strip).toContainText("6 Competitions");
+    await expect(strip).toContainText("4 Competitions");
     await expect(strip).toContainText("Open for ages 3–12");
     await expect(strip).toContainText("Online participation");
   });
 
-  test("shows the six configured competitions with their real names, ages and tasks, each with a details link", async ({ page }) => {
+  test("shows the four configured competitions with their real names, ages and tasks, each with a details link", async ({ page }) => {
     await page.goto("/");
     const cards = page.locator("#competitions ol > li");
     await expect(cards).toHaveCount(events.length);
@@ -137,7 +137,7 @@ test.describe("navigation", () => {
     await page.goto("/");
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       await page.keyboard.press("Tab");
       const ring = await page.evaluate(() => {
         const s = getComputedStyle(document.activeElement!);
@@ -195,11 +195,11 @@ for (const vp of VIEWPORTS) {
       expect(cut).toBe(0);
     });
 
-    test("the six cards lay out in the right number of columns without overlapping", async ({ page }) => {
+    test("the four cards lay out in the right number of columns without overlapping", async ({ page }) => {
       await page.goto("/");
       const rects = await page.locator("#competitions ol > li").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
       const columns = new Set(rects.map((r) => Math.round(r.left))).size;
-      expect(columns).toBe(vp.width >= 1024 ? 3 : vp.width >= 768 ? 2 : 1);
+      expect(columns).toBe(vp.width >= 768 ? 2 : 1);
       for (let i = 0; i < rects.length; i++)
         for (let j = i + 1; j < rects.length; j++) {
           const [a, b] = [rects[i], rects[j]];

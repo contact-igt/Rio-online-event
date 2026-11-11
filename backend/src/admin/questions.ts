@@ -352,24 +352,71 @@ export async function reorderQuestions(db: DatabaseAdapter, now: Date, actor: Ac
   });
 }
 
+/** Publishes one competition's draft inside the caller's transaction. `details` adds labels to the audit row. */
+async function publishDraft(tx: Transaction, now: Date, actor: Actor, event: { id: number; slug: string }, setId: number, details: Record<string, string | number | null> = {}) {
+  // Row lock on MySQL; SQLite locks the whole database for a write transaction. Either way a second publish of the same draft waits and then
+  // finds it already published.
+  const set = await draftOf(tx, event.id, setId);
+  const all = await questionsOf(tx, setId);
+  const problems = publishProblems(all);
+  if (problems.length > 0) throw new FieldsInvalid(Object.fromEntries(problems.map((p) => [p.key || "set", p.code])), 422, "not_publishable");
+  const inactive = all.filter((q) => !q.active).length;
+  if (inactive > 0) await tx.query("DELETE FROM questions WHERE question_set_id = ? AND active = 0", [setId]);
+  // Order matters: the unique key allows one published set per competition, so the old one is retired first.
+  const retired = (await tx.query("UPDATE question_sets SET status = 'retired', retired_at = ? WHERE event_id = ? AND status = 'published'", [now, event.id])).affectedRows;
+  const flipped = (await tx.query("UPDATE question_sets SET status = 'published', published_at = ?, published_by = ? WHERE id = ? AND status = 'draft'", [now, actor.staffId, setId])).affectedRows;
+  if (flipped !== 1) throw conflict("not_a_draft", "This draft was already published.");
+  await audit(tx, now, actor, "question_set.publish", "question_set", setId, { competition: event.slug, version: Number(set.version), questions: all.length - inactive, removedInactive: inactive, retiredPrevious: retired, ...details });
+  return { id: setId, version: Number(set.version), questions: all.length - inactive, removedInactive: inactive, retiredPrevious: retired };
+}
+
 export async function publishSet(db: DatabaseAdapter, now: Date, actor: Actor, slug: string, setId: number) {
   return db.transaction(async (tx) => {
     const event = await eventBySlug(tx, slug);
     if (!event) throw notFound();
-    // Row lock on MySQL; SQLite locks the whole database for a write transaction. Either way a second publish of the same draft waits and then
-    // finds it already published.
-    const set = await draftOf(tx, event.id, setId);
-    const all = await questionsOf(tx, setId);
-    const problems = publishProblems(all);
-    if (problems.length > 0) throw new FieldsInvalid(Object.fromEntries(problems.map((p) => [p.key || "set", p.code])), 422, "not_publishable");
-    const inactive = all.filter((q) => !q.active).length;
-    if (inactive > 0) await tx.query("DELETE FROM questions WHERE question_set_id = ? AND active = 0", [setId]);
-    // Order matters: the unique key allows one published set per competition, so the old one is retired first.
-    const retired = (await tx.query("UPDATE question_sets SET status = 'retired', retired_at = ? WHERE event_id = ? AND status = 'published'", [now, event.id])).affectedRows;
-    const flipped = (await tx.query("UPDATE question_sets SET status = 'published', published_at = ?, published_by = ? WHERE id = ? AND status = 'draft'", [now, actor.staffId, setId])).affectedRows;
-    if (flipped !== 1) throw conflict("not_a_draft", "This draft was already published.");
-    await audit(tx, now, actor, "question_set.publish", "question_set", setId, { competition: slug, version: Number(set.version), questions: all.length - inactive, removedInactive: inactive, retiredPrevious: retired });
-    return { id: setId, version: Number(set.version), questions: all.length - inactive, removedInactive: inactive, retiredPrevious: retired };
+    return publishDraft(tx, now, actor, event, setId);
+  });
+}
+
+/**
+ * One question list for every competition. The owner asked for the same registration questions in all competitions, so the admin edits ONE
+ * draft (in the competition named by `slug`) and this publishes it there and, in the same transaction, as a new version of every other active
+ * competition: same question keys, positions and option codes. Each competition still keeps its own versioned sets, so every entry stays bound
+ * to the exact wording its parent saw, and all the database rules (immutable published sets, one published set per competition) still apply.
+ * A draft another competition still had is discarded first: with one shared editor it can no longer be reached. Either everything is
+ * published or nothing is.
+ */
+export async function publishSetToAll(db: DatabaseAdapter, now: Date, actor: Actor, slug: string, setId: number) {
+  return db.transaction(async (tx) => {
+    const source = await eventBySlug(tx, slug);
+    if (!source) throw notFound();
+    const own = await publishDraft(tx, now, actor, source, setId, { shared: 1 });
+    const others = (await tx.query<{ id: number | string; slug: string }>("SELECT id, slug FROM events WHERE active = 1 AND id <> ? ORDER BY display_order, id", [source.id])).rows.map((r) => ({ id: Number(r.id), slug: r.slug }));
+    const competitions = [{ slug: source.slug, version: own.version }];
+    let discardedDrafts = 0;
+    for (const event of others) {
+      const sets = await summaries(tx, event.id);
+      const stale = sets.find((s) => s.status === "draft");
+      if (stale) {
+        await tx.query("DELETE FROM questions WHERE question_set_id = ?", [stale.id]);
+        await tx.query("DELETE FROM question_sets WHERE id = ? AND status = 'draft'", [stale.id]);
+        await audit(tx, now, actor, "question_set.discard", "question_set", stale.id, { competition: event.slug, version: stale.version, replacedByShared: 1 });
+        discardedDrafts += 1;
+      }
+      const version = Math.max(0, ...sets.map((s) => s.version)) + 1;
+      await tx.query("INSERT INTO question_sets (event_id, version, status, created_by, created_at) VALUES (?, ?, 'draft', ?, ?)", [event.id, version, actor.staffId, now]);
+      const id = Number((await tx.query<{ id: number | string }>("SELECT id FROM question_sets WHERE event_id = ? AND version = ?", [event.id, version])).rows[0]!.id);
+      await tx.query(
+        `INSERT INTO questions (question_set_id, position, question_key, type, prompt_ta, prompt_en, help_ta, help_en, required, options_json, max_length, min_number, max_number, active, min_choices, max_choices)
+         SELECT ?, position, question_key, type, prompt_ta, prompt_en, help_ta, help_en, required, options_json, max_length, min_number, max_number, 1, min_choices, max_choices
+           FROM questions WHERE question_set_id = ?`,
+        [id, setId],
+      );
+      await audit(tx, now, actor, "question_set.create", "question_set", id, { competition: event.slug, version, copiedQuestions: own.questions, sharedFrom: source.slug });
+      const done = await publishDraft(tx, now, actor, event, id, { shared: 1, sharedFrom: source.slug });
+      competitions.push({ slug: event.slug, version: done.version });
+    }
+    return { questions: own.questions, removedInactive: own.removedInactive, discardedDrafts, competitions };
   });
 }
 

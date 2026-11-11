@@ -5,7 +5,7 @@ import { CompetitionCard } from "@/components/competition-card";
 import { Icon } from "@/components/ui/icon";
 import { AGES, events, fitsAge } from "@/lib/events";
 
-// The age filter and the six cards on /competitions. Pick an age and every card says Eligible or Not eligible; nothing is hidden, so a
+// The age filter and the competition cards on /competitions. Pick an age and every card says Eligible or Not eligible; nothing is hidden, so a
 // parent can see why. Picking the same age again clears the filter. Ages and bands come from lib/events.ts.
 
 export function CompetitionBrowser({ open }: { open: boolean }) {
@@ -50,7 +50,7 @@ export function CompetitionBrowser({ open }: { open: boolean }) {
         </p>
       )}
 
-      <ol className="mt-4 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <ol className="mt-4 grid gap-5 md:grid-cols-2">
         {events.map((e, i) => (
           <CompetitionCard key={e.slug} event={e} index={i} fit={age === null ? "unknown" : fitsAge(e, age) ? "yes" : "no"} age={age} showRegister open={open} />
         ))}

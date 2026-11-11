@@ -9,7 +9,7 @@ import { emailEnabled } from "@/lib/email/config";
 import { AGE_MAX, AGE_MIN, awards, events, rules } from "@/lib/events";
 import { loadPublicRegistration } from "@/lib/registration/public-status";
 
-// The campaign landing page. Mobile first: a short hero with two clear actions, then the six competitions, how to take part, the rules.
+// The campaign landing page. Mobile first: a short hero with two clear actions, then the competitions, how to take part, the rules.
 // Cached for a minute so it stays fast; the only live fact on it is whether registration is open. Every number comes from lib/events.ts.
 export const revalidate = 60;
 
@@ -140,8 +140,8 @@ export default async function HomePage() {
       </div>
 
       <section id="competitions" aria-labelledby="competitions-title" className={section}>
-        <SectionHeading id="competitions-title" eyebrow="Six competitions" ta="ஆறு போட்டிகள்" en="Six Competitions" subTa="உங்கள் குழந்தையின் ஆர்வத்துக்கேற்ற போட்டியைத் தேர்வு செய்யுங்கள்." subEn="Pick your child's interest and take part in one of our six competitions. A child can enter one competition only." />
-        <ol className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <SectionHeading id="competitions-title" eyebrow="Four competitions" ta="நான்கு போட்டிகள்" en="Four Competitions" subTa="உங்கள் குழந்தையின் ஆர்வத்துக்கேற்ற போட்டியைத் தேர்வு செய்யுங்கள்." subEn="Pick your child's interest and take part in one of our four competitions. A child can enter one competition only." />
+        <ol className="mt-8 grid gap-5 md:grid-cols-2">
           {events.map((e, i) => (
             <CompetitionCard key={e.slug} event={e} index={i} />
           ))}

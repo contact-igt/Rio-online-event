@@ -92,17 +92,17 @@ describe("code messages follow the configured length, in both languages", () => 
 });
 
 describe("selected event handling (no open redirects)", () => {
-  it("keeps only one of the six known slugs", () => {
+  it("keeps only one of the known competition slugs", () => {
     expect(parseEventSlug("kutti-pesalar")).toBe("kutti-pesalar");
     for (const bad of ["https://evil.example", "//evil.example", "/account", "nope", "", null, undefined, 5, ["kutti-pesalar"]]) expect(parseEventSlug(bad), String(bad)).toBeNull();
   });
   it("builds every redirect from a validated slug", () => {
-    expect(signInPath("tamilil-sollu")).toBe("/signin?event=tamilil-sollu");
+    expect(signInPath("kutti-pesalar")).toBe("/signin?event=kutti-pesalar");
     expect(signInPath(null)).toBe("/signin");
-    expect(verifyPath("tamilil-sollu")).toBe("/signin/verify?event=tamilil-sollu");
-    expect(verifyPath("tamilil-sollu", true)).toBe("/signin/verify?event=tamilil-sollu&resent=1");
+    expect(verifyPath("kutti-pesalar")).toBe("/signin/verify?event=kutti-pesalar");
+    expect(verifyPath("kutti-pesalar", true)).toBe("/signin/verify?event=kutti-pesalar&resent=1");
     expect(verifyPath(null, true)).toBe("/signin/verify?resent=1");
-    expect(afterSignInPath("tamilil-sollu")).toBe(registerPath("tamilil-sollu"));
+    expect(afterSignInPath("kutti-pesalar")).toBe(registerPath("kutti-pesalar"));
     expect(afterSignInPath(null)).toBe("/account");
   });
 });

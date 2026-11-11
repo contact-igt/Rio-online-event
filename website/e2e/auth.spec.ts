@@ -61,7 +61,7 @@ test.describe("sign-in screen", () => {
   });
 
   test("shows the selected competition, and ignores a hostile event value", async ({ page }) => {
-    await page.goto("/signin?event=tamilil-sollu");
+    await page.goto("/signin?event=kutti-pesalar");
     await expect(page.getByText("தமிழில் சொல்லு!")).toBeVisible();
     await page.goto("/signin?event=https://evil.example");
     await expect(page.getByText(/Selected competition/)).toHaveCount(0);

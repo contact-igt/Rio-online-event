@@ -1,13 +1,21 @@
 "use server";
 
+import { assignJudgeApi } from "@/lib/admin/api";
+import { staffSession } from "@/lib/staff/auth";
 import type { WinnerResult } from "@/lib/judging/winners";
-
-// Judge assignment and winner confirmation need data endpoints that the Express API does not have yet (the Supabase versions were removed with the
-// Supabase sign-in). Until they exist these answer "unavailable" and change nothing; no page links to them any more.
 
 export type AssignResult = { ok: true; added: number } | { ok: false; code: "invalid" | "notAllowed" | "judgeNotFound" | "tooMany" | "unavailable" };
 
-export async function assignJudge(_input: { slug: string; judgeId: string }): Promise<AssignResult> {
+export async function assignJudge(input: { slug: string; judgeId: string }): Promise<AssignResult> {
+  const session = await staffSession("admin");
+  if (!session) return { ok: false, code: "notAllowed" };
+  const reply = await assignJudgeApi(input.slug, input.judgeId, session.csrfToken);
+  if (reply.status === 200 && reply.body?.ok) {
+    return { ok: true, added: reply.body.added };
+  }
+  if (reply.status === 404) {
+    return { ok: false, code: "judgeNotFound" };
+  }
   return { ok: false, code: "unavailable" };
 }
 

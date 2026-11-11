@@ -4,10 +4,10 @@ import { AGES, awards, events, fitsAge, getEvent, sharedAges, winnersLine } from
 const TAMIL = /[஀-௿]/;
 
 describe("competition data (poster fidelity)", () => {
-  it("has six events numbered 1 to 6 with unique slugs", () => {
-    expect(events).toHaveLength(6);
-    expect(events.map((e) => e.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(new Set(events.map((e) => e.slug)).size).toBe(6);
+  it("has events numbered 1 to 4 with unique slugs", () => {
+    expect(events).toHaveLength(4);
+    expect(events.map((e) => e.number)).toEqual([1, 2, 3, 4]);
+    expect(new Set(events.map((e) => e.slug)).size).toBe(4);
   });
 
   it("keeps the age bands printed on the poster", () => {
@@ -16,8 +16,6 @@ describe("competition data (poster fidelity)", () => {
       [5, 8],
       [6, 12],
       [8, 12],
-      [5, 12],
-      [6, 12],
     ]);
   });
 
@@ -49,9 +47,9 @@ describe("age rules", () => {
   it("matches the overlaps parents will see", () => {
     const eligibleFor = (age: number) => events.filter((e) => fitsAge(e, age)).map((e) => e.number);
     expect(eligibleFor(3)).toEqual([1]);
-    expect(eligibleFor(5)).toEqual([1, 2, 5]);
-    expect(eligibleFor(8)).toEqual([2, 3, 4, 5, 6]);
-    expect(eligibleFor(12)).toEqual([3, 4, 5, 6]);
+    expect(eligibleFor(5)).toEqual([1, 2]);
+    expect(eligibleFor(8)).toEqual([2, 3, 4]);
+    expect(eligibleFor(12)).toEqual([3, 4]);
   });
 
   it("computes shared ages between events", () => {

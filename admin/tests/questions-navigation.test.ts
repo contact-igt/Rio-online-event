@@ -28,11 +28,14 @@ describe("Questions navigation", () => {
     expect(html).not.toContain("<a ");
   });
 
-  it("links each competition to its Question Builder", () => {
-    const html = renderToStaticMarkup(createElement(CompetitionLinks, { competitions: [competition("kutti-pesalar", "Little Speakers"), competition("katturai", "Essay")] }));
+  it("lists every competition that shares the one question list, with the version its parents see, linking to the competition", () => {
+    const published = { ...competition("kutti-pesalar", "Little Speakers"), published: { id: 7, version: 3, questionCount: 5 } };
+    const html = renderToStaticMarkup(createElement(CompetitionLinks, { competitions: [published, competition("katturai", "Essay")] }));
     const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
-    expect(hrefs).toEqual(["/admin/events/kutti-pesalar/questions", "/admin/events/katturai/questions"]);
+    expect(hrefs).toEqual(["/admin/events/kutti-pesalar", "/admin/events/katturai"]);
     expect(html).toContain("Little Speakers");
+    expect(html).toContain("Parents see v3 · 5 questions");
+    expect(html).toContain("Not published yet");
     expect(html).not.toContain("No competitions available yet.");
   });
 });

@@ -7,9 +7,12 @@ import { AppError } from "../http/errors.ts";
 import { requestIdOf } from "../http/request-id.ts";
 import { loadDashboard } from "./dashboard.ts";
 import {
-  addQuestion, asRuleViolation, createDraft, createSetBody, deleteQuestion, discardDraft, FieldsInvalid, getSet, listCompetitions, listSets, previewSet, publishBody, publishSet,
+  addQuestion, asRuleViolation, createDraft, createSetBody, deleteQuestion, discardDraft, FieldsInvalid, getSet, listCompetitions, listSets, previewSet, publishBody, publishSet, publishSetToAll,
   questionBody, reorderBody, reorderQuestions, updateQuestion,
 } from "./questions.ts";
+import {
+  assignJudgeToCompetition, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive,
+} from "./judges.ts";
 import { listQuery, listRegistrations, loadRegistration } from "./registrations.ts";
 import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } from "./settings.ts";
 
@@ -18,7 +21,7 @@ import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } fro
 //   GET /dashboard, GET and PATCH /settings                                         (M5A)
 //   GET /registrations (filters: competition, status, page), GET /registrations/:entryCode   (read only; opening one is audited)
 //   GET /competitions, GET and POST /competitions/:slug/question-sets               (M5B)
-//   GET and DELETE ../question-sets/:setId, GET ../:setId/preview, POST ../:setId/publish
+//   GET and DELETE ../question-sets/:setId, GET ../:setId/preview, POST ../:setId/publish, POST ../:setId/publish-all (same questions to every competition)
 //   POST ../:setId/questions, PATCH and DELETE ../:setId/questions/:questionId, PUT ../:setId/order
 
 const notFound = () => new AppError(404, "not_found", "Not found.");
@@ -111,6 +114,28 @@ export function adminRouter(deps: AuthDeps): Router {
   router.post(`${sets}/:setId/publish`, ...admin, guarded(async (req, res) => {
     parse(publishBody, req.body);
     res.json(await publishSet(deps.db, now(), actor(res), slug(req), setId(req)));
+  }));
+  router.post(`${sets}/:setId/publish-all`, ...admin, guarded(async (req, res) => {
+    parse(publishBody, req.body);
+    res.json(await publishSetToAll(deps.db, now(), actor(res), slug(req), setId(req)));
+  }));
+
+  // Judge management for administrators
+  router.get("/judges", ...admin, guarded(async (_req, res) => void res.json(await listJudges(deps.db))));
+  router.post("/judges", ...admin, guarded(async (req, res) => {
+    const input = parse(provisionJudgeSchema, req.body);
+    res.status(201).json(await provisionJudge(deps.db, now(), actor(res), input, deps.auth.argon2));
+  }));
+  router.patch("/judges/:judgeId/active", ...admin, guarded(async (req, res) => {
+    const { active } = parse(setActiveSchema, req.body);
+    res.json(await setJudgeActive(deps.db, now(), actor(res), { judgeId: idOf(req.params.judgeId), active }));
+  }));
+  router.post("/judges/:judgeId/reset-password", ...admin, guarded(async (req, res) => {
+    res.json(await resetJudgePassword(deps.db, now(), actor(res), { judgeId: idOf(req.params.judgeId) }, deps.auth.argon2));
+  }));
+  router.post("/competitions/:slug/assign-judge", ...admin, guarded(async (req, res) => {
+    const judgeId = idOf((req.body as { judgeId?: unknown })?.judgeId);
+    res.json(await assignJudgeToCompetition(deps.db, now(), actor(res), { slug: slugOf(req.params.slug), judgeId }));
   }));
 
   // Staff management is for the Super Admin only. It is read-only for now; creating and changing accounts stays on the command line.

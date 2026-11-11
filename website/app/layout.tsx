@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     template: "%s | மழலைத் தமிழே! Rio Children's Day 2026",
   },
   description:
-    "Six online Tamil video competitions for children aged 3 to 12, from Rio Hospital for Women & Children. ஆறு ஆன்லைன் தமிழ்ப் போட்டிகள்.",
+    "Four online Tamil video competitions for children aged 3 to 12, from Rio Hospital for Women & Children. நான்கு ஆன்லைன் தமிழ்ப் போட்டிகள்.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

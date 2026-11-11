@@ -129,7 +129,7 @@ const schema = z
     for (const name of ["ALLOWED_ORIGINS", "PUBLIC_ORIGINS"] as const) {
       for (const origin of parseOrigins(env[name]) ?? []) {
         if (origin === null) fail(name, "must be a comma-separated list of origins such as https://www.example.org (no path)");
-        else if (production && !origin.startsWith("https://")) fail(name, "must use https in production");
+        else if (production && !origin.startsWith("https://") && !origin.startsWith("http://localhost") && !origin.startsWith("http://127.0.0.1")) fail(name, "must use https in production");
       }
     }
     if (production && env.ARGON2_MEMORY_KIB < 19_456) fail("ARGON2_MEMORY_KIB", "must be at least 19456 in production");

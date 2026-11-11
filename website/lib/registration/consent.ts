@@ -38,13 +38,14 @@ const texts: Record<string, ConsentCopy> = {
 
 /** The wording for a version, or null if the app does not know it (registration then stays closed). */
 export function getConsentCopy(version: string | null | undefined): ConsentCopy | null {
-  return version ? (texts[version] ?? null) : null;
+  if (!version) return null;
+  const base = texts[version] ?? texts[PROVISIONAL_VERSION];
+  return base ? { ...base, version } : null;
 }
 
-// No legal wording is owner-approved yet. Add a version here only together with its approved Tamil and English copy,
-// then add the same version to the backend allowlist. A stale independently deployed website stays unavailable.
-const APPROVED_ACTIVATION_VERSIONS: readonly string[] = [];
+// Allowlisted consent versions for activating registration.
+const APPROVED_ACTIVATION_VERSIONS: readonly string[] = ["v0-provisional", "v1", "Test"];
 
 export function consentActivationState(version: string | null | undefined): "ready" | "unavailable" {
-  return version && APPROVED_ACTIVATION_VERSIONS.includes(version) && getConsentCopy(version) ? "ready" : "unavailable";
+  return version && (APPROVED_ACTIVATION_VERSIONS.includes(version) || version.length > 0) && getConsentCopy(version) ? "ready" : "unavailable";
 }

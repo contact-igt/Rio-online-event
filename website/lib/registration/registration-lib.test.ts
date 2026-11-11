@@ -44,7 +44,7 @@ describe("mobile numbers (10-digit Indian mobile)", () => {
   });
 });
 
-describe("age and the six competition age bands", () => {
+describe("age and the competition age bands", () => {
   it("accept exactly the ages each competition allows, for every age from 0 to 14 and every event", () => {
     for (const event of events) {
       for (let age = 0; age <= 14; age++) {
@@ -57,7 +57,7 @@ describe("age and the six competition age bands", () => {
   });
   it("match the shared lib/events.ts rule and cover every age 3-12 in some competition", () => {
     for (const age of AGES) expect(events.some((e) => fitsAge(e, age))).toBe(true);
-    expect(events.map((e) => [e.minAge, e.maxAge])).toEqual([[3, 5], [5, 8], [6, 12], [8, 12], [5, 12], [6, 12]]);
+    expect(events.map((e) => [e.minAge, e.maxAge])).toEqual([[3, 5], [5, 8], [6, 12], [8, 12]]);
   });
   it("reject non-numeric, fractional, negative and out-of-range ages with the general age message", () => {
     for (const a of ["", "x", "9.5", "-9", "013", "123", "2", "13"]) {

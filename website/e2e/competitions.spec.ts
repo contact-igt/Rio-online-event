@@ -21,10 +21,10 @@ test.describe("competitions page", () => {
     await expect(page.getByRole("heading", { name: /How It Works Next/ })).toBeVisible();
   });
 
-  test("six cards read from the application data, with a View details link each", async ({ page }) => {
+  test("four cards read from the application data, with a View details link each", async ({ page }) => {
     await page.goto("/competitions");
     const cards = page.locator("ol > li[data-fit]");
-    await expect(cards).toHaveCount(6);
+    await expect(cards).toHaveCount(4);
     for (const [i, e] of events.entries()) {
       const card = cards.nth(i);
       await expect(card).toContainText(e.nameTa);
@@ -55,7 +55,7 @@ test.describe("competitions page", () => {
         }
       }
       const fitting = events.filter((e) => fitsAge(e, age)).length;
-      await expect(page.getByRole("status").first()).toContainText(`${fitting} of 6 competitions accept age ${age}`);
+      await expect(page.getByRole("status").first()).toContainText(`${fitting} of 4 competitions accept age ${age}`);
     }
   });
 
@@ -65,14 +65,14 @@ test.describe("competitions page", () => {
     await twelve.click();
     await expect(page.locator("li[data-fit=no]").first().getByRole("link", { name: /View details/ })).toBeVisible();
     await twelve.click();
-    await expect(page.locator("li[data-fit=unknown]")).toHaveCount(6);
+    await expect(page.locator("li[data-fit=unknown]")).toHaveCount(4);
   });
 
   test("Register appears only while registration is open, and then leads to the existing registration route", async ({ page }) => {
     await page.goto("/competitions");
     const open = await page.locator("a[href$='/register']").count();
     if (open > 0) {
-      expect(open).toBe(6);
+      expect(open).toBe(4);
       await expect(page.locator("a[href='/events/kutti-pesalar/register']")).toHaveCount(1);
     } else {
       await expect(page.getByText("Registration opens soon").first()).toBeVisible();

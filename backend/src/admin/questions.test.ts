@@ -464,4 +464,65 @@ describe.each(dialects)("%s question builder", (dialect: Dialect) => {
     expect(text).not.toMatch(/guardian|mobile|child_name|9876543210/i);
     expect(randomUUID()).toBeTruthy();
   });
+
+  describe("one question list for every competition (publish-all)", () => {
+    const published = async (eventId: number) =>
+      (await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [eventId])).rows.map((r) => Number(r.id));
+    const shape = (qs: Json[]) => qs.map((q) => [q.key, q.position, q.type, q.promptTa, q.promptEn, q.required, q.options]);
+
+    it("refuses anonymous callers, judges, a missing confirm and an empty draft, and changes nothing", async () => {
+      const id = await draft("alpha", "blank");
+      const before = { alpha: await published(ev.alpha), beta: await published(ev.beta) };
+      expect((await call(P("alpha", id, "/publish-all"), { method: "POST", who: null, body: { confirm: true } })).status).toBe(401);
+      expect((await call(P("alpha", id, "/publish-all"), { method: "POST", who: judge, body: { confirm: true } })).status).toBe(403);
+      expect((await A(P("alpha", id, "/publish-all"), { method: "POST", body: {} })).status).toBe(400);
+      const empty = await A(P("alpha", id, "/publish-all"), { method: "POST", body: { confirm: true } });
+      expect(empty.status).toBe(422);
+      expect(empty.body.error.code).toBe("not_publishable");
+      expect({ alpha: await published(ev.alpha), beta: await published(ev.beta) }).toEqual(before);
+      await discardAll("alpha");
+    });
+
+    it("publishes the same questions to every active competition in one step, replacing a stale draft and skipping inactive ones", async () => {
+      await sql("INSERT INTO events (slug, name_ta, name_en, min_age, max_age, display_order, active) VALUES ('gamma', 'போட்டி 3', 'Contest 3', 3, 12, 3, 0)");
+      const gamma = Number((await sql<{ id: number }>("SELECT id FROM events WHERE slug = 'gamma'")).rows[0]!.id);
+      const stale = await draft("beta", "blank");
+      await add("beta", stale, short({ promptEn: "Beta stale" }));
+      const betaVersions = (await A(P("beta"))).body.sets.length as number;
+
+      const id = await draft("alpha", "blank");
+      await add("alpha", id, short({ required: true }));
+      await add("alpha", id, choice("radio"));
+      await add("alpha", id, short({ promptEn: "Parked", active: false }));
+      const r = await A(P("alpha", id, "/publish-all"), { method: "POST", body: { confirm: true } });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      expect(r.body).toMatchObject({ questions: 2, removedInactive: 1, discardedDrafts: 1 });
+      expect(r.body.competitions.map((c: Json) => c.slug)).toEqual(["alpha", "beta"]);
+
+      const [alphaSet] = await published(ev.alpha);
+      const [betaSet] = await published(ev.beta);
+      expect(alphaSet).toBe(id);
+      const a = (await detail("alpha", alphaSet!)).questions as Json[];
+      const b = (await detail("beta", betaSet!)).questions as Json[];
+      expect(a).toHaveLength(2);
+      expect(shape(b)).toEqual(shape(a)); // same keys, positions, wording and option codes
+      expect(b.map((q) => q.id)).not.toEqual(a.map((q) => q.id)); // beta has its own rows, so its entries stay bound to its own set
+      // the stale beta draft is gone; beta gained exactly one published version; the inactive competition got nothing
+      const betaSets = (await A(P("beta"))).body.sets as Json[];
+      expect(betaSets.some((s) => s.status === "draft")).toBe(false);
+      expect(betaSets).toHaveLength(betaVersions); // the stale draft was removed and one new version added
+      expect(await scalar("SELECT COUNT(*) AS n FROM question_sets WHERE event_id = ?", [gamma])).toBe(0);
+      // parents see the same questions in both competitions
+      const events = (await call("/api/v1/events")).body.events as Json[];
+      const pub = (slug: string) => events.find((e) => e.slug === slug)!.questionSet.questions.map((q: Json) => [q.key, q.promptEn]);
+      expect(pub("beta")).toEqual(pub("alpha"));
+      // audited per competition, with labels only
+      expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'question_set.publish' AND entity_id IN (?, ?)", [String(alphaSet), String(betaSet)])).toBe(2);
+      expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'question_set.discard' AND entity_id = ?", [String(stale)])).toBe(1);
+      // publishing the same set again is refused and changes nothing
+      const again = await A(P("alpha", id, "/publish-all"), { method: "POST", body: { confirm: true } });
+      expect(again.status).toBe(409);
+      expect(await published(ev.beta)).toEqual([betaSet]);
+    });
+  });
 });
