@@ -222,7 +222,7 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
       const s = await call("/api/v1/settings/public");
       expect(s.body).toMatchObject({ registrationOpen: true, guardianConsentVersion: "v1", mediaConsentVersion: "m1" });
       expect(new Date(s.body.serverTime!).getTime()).toBe(clock.t);
-      expect(Object.keys(s.body).sort()).toEqual(["closesAt", "guardianConsentVersion", "mediaConsentVersion", "opensAt", "registrationOpen", "serverTime"]);
+      expect(Object.keys(s.body).sort()).toEqual(["closesAt", "guardianConsentVersion", "mediaConsentVersion", "opensAt", "registrationOpen", "serverTime", "videoUploads"]);
     });
   });
 

@@ -6,6 +6,6 @@ const mode = location.hash;
 const upload =
   mode === "#off"
     ? ({ kind: "off" } as const)
-    : ({ kind: "on", submissionId: "bbbbbbbb-0000-4000-8000-0000000000b1", hasVideo: mode === "#has" } as const);
+    : ({ kind: "on", hasVideo: mode === "#has" } as const);
 
-createRoot(document.getElementById("root")!).render(<NextSteps upload={upload} submit={{ kind: "off" }} />);
+createRoot(document.getElementById("root")!).render(<NextSteps upload={upload} />);

@@ -31,6 +31,22 @@ describe("loadConfig", () => {
         cookieSameSite: "strict",
       },
       registration: { publicOrigins: [], tokenTtlMs: 30 * 86_400_000 },
+      uploads: { enabled: false, r2: null },
+    });
+  });
+
+  describe("video uploads (fail closed: off unless switched on AND configured, never a crash)", () => {
+    const r2 = { R2_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", R2_ACCESS_KEY_ID: "AKIAEXAMPLEEXAMPLE01", R2_SECRET_ACCESS_KEY: "s".repeat(40), R2_BUCKET_NAME: "rio-videos" };
+    it("turns on only for the exact value yes", () => {
+      expect(loadConfig({ RIO_UPLOADS_ENABLED: "yes" }).uploads.enabled).toBe(true);
+      for (const v of ["YES", "true", "1", "no", " yes"]) expect(loadConfig({ RIO_UPLOADS_ENABLED: v }).uploads.enabled, v).toBe(false);
+    });
+    it("reads the bucket only when all four settings are present and well-formed, and never echoes a value", () => {
+      expect(loadConfig(r2).uploads.r2).toEqual({ accountId: r2.R2_ACCOUNT_ID, bucket: "rio-videos", accessKeyId: r2.R2_ACCESS_KEY_ID, secretAccessKey: r2.R2_SECRET_ACCESS_KEY });
+      for (const name of Object.keys(r2) as (keyof typeof r2)[]) {
+        expect(loadConfig({ ...r2, [name]: "" }).uploads.r2, `${name} missing`).toBeNull();
+        expect(loadConfig({ ...r2, [name]: "bad value with spaces" }).uploads.r2, `${name} malformed`).toBeNull();
+      }
     });
   });
 

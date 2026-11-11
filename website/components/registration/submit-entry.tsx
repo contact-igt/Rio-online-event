@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { submitEntry } from "@/app/events/[slug]/register/submit-actions";
 import { Bilingual, FieldError } from "@/components/auth/bilingual";
 import { reg, type Msg } from "@/lib/registration/messages";
-import type { FinalizeErrorCode } from "@/lib/submit/service";
+import type { SubmitErrorCode } from "@/lib/submit/api-codes";
 
 // Final submission of one entry, with a confirmation step. The parent sees exactly what will be submitted, is told in plain
 // words that it is final, and cannot send the request twice: the confirm button is disabled while the request runs and a
@@ -14,12 +14,12 @@ import type { FinalizeErrorCode } from "@/lib/submit/service";
 //
 // The optional permission to share the entry (media consent) is shown for information only. It is not a condition of entering.
 
-export type SubmitDetails = { submissionId: string; slug: string; childName: string; childAge: number; eventNameTa: string; eventNameEn: string; mediaConsent: boolean };
+export type SubmitDetails = { childName: string; childAge: number; eventNameTa: string; eventNameEn: string; mediaConsent: boolean };
 
 type State = { kind: "idle" } | { kind: "confirming" } | { kind: "submitting" } | { kind: "done"; already: boolean } | { kind: "failed"; message: Msg };
 
 const ERRORS = reg.submit.errors;
-const messageFor = (code: FinalizeErrorCode): Msg => ERRORS[code as keyof typeof ERRORS] ?? ERRORS.unavailable;
+const messageFor = (code: SubmitErrorCode): Msg => ERRORS[code as keyof typeof ERRORS] ?? ERRORS.unavailable;
 
 const button = "btn w-full sm:w-auto";
 
@@ -38,14 +38,17 @@ export function SubmitEntry(d: SubmitDetails) {
     if (inflight.current) return; // a second click before the screen has updated
     inflight.current = true;
     setState({ kind: "submitting" });
-    const result = await submitEntry({ submissionId: d.submissionId, slug: d.slug }).catch(() => null);
+    const result = await submitEntry().catch(() => null);
     if (!result) {
       inflight.current = false;
       return setState({ kind: "failed", message: ERRORS.network });
     }
     if (!result.ok) {
       inflight.current = false;
-      return setState({ kind: "failed", message: messageFor(result.code) });
+      setState({ kind: "failed", message: messageFor(result.code) });
+      // A refused video has been removed by the API: refresh so the upload step comes back.
+      if (result.code === "videoDuration" || result.code === "videoInvalid") router.refresh();
+      return;
     }
     setState({ kind: "done", already: result.already });
     router.refresh(); // the page now shows the saved, submitted entry

@@ -33,6 +33,8 @@ export type PublicSettings = {
   closesAt: string | null;
   guardianConsentVersion: string | null;
   mediaConsentVersion: string | null;
+  /** True when a parent with a draft could upload a video now (registration open, uploads switched on, bucket configured). */
+  videoUploads?: boolean;
   serverTime: string;
 };
 
@@ -47,6 +49,8 @@ export type RegistrationView = {
   questionSet: { version: number; questions: PublicQuestion[] };
   answers: Record<string, string | number | string[] | null>;
   missingRequired: string[];
+  /** The entry's one checked video, if any. Never an object key or a URL. */
+  video?: { uploaded: boolean; bytes: number | null; contentType: string | null; uploadedAt: string | null };
   createdAt: string | null;
   updatedAt: string | null;
   codeExpiresAt: string;
@@ -56,12 +60,15 @@ export type RegistrationReply<T> = {
   status: number;
   body: T | null;
   fields?: { field: string; problem: string }[];
+  /** The API's own error code (lower-case words), when it sent one. */
+  code?: string;
 };
 
 const REG_COOKIE_NAMES = new Set(["rio_reg", "__Host-rio_reg"]);
-const PATHS = new Set(["/events", "/settings/public", "/registrations", "/registrations/recover", "/registrations/current"]);
+const PATHS = new Set(["/events", "/settings/public", "/registrations", "/registrations/recover", "/registrations/current", "/registrations/current/video-uploads", "/registrations/current/submit"]);
+const COMPLETE = /^\/registrations\/current\/video-uploads\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/complete$/;
 
-export const isRegistrationPath = (path: string): boolean => PATHS.has(path);
+export const isRegistrationPath = (path: string): boolean => PATHS.has(path) || COMPLETE.test(path);
 
 export function registrationPath(path: string): string {
   if (!path.startsWith("/") || path.includes("?") || path.includes("#") || path.includes("\\") || path.includes("..") || !isRegistrationPath(path)) {
@@ -141,7 +148,7 @@ export async function requestRegistration<T>(path: string, init: { method?: "GET
   if (response.status >= 500 || response.status === 404 || (response.status === 403 && (apiCode === "origin_not_allowed" || apiCode === "csrf_invalid"))) {
     logApiFault("website", { method, path: target, host: api.host, status: response.status, apiCode });
   }
-  return { status: response.status, body: response.ok ? (body as T) : null, fields: error?.fields };
+  return { status: response.status, body: response.ok ? (body as T) : null, fields: error?.fields, ...(apiCode ? { code: apiCode } : {}) };
 }
 
 export async function publicEvents(): Promise<PublicEvent[] | null> {
@@ -181,4 +188,21 @@ export async function recoverRegistration(code: string): Promise<RegistrationRep
 
 export async function updateRegistration(body: unknown, csrf: string): Promise<RegistrationReply<{ registration: RegistrationView; csrfToken: string }>> {
   return requestRegistration("/registrations/current", { method: "PATCH", body, csrf });
+}
+
+export type VideoUploadGrant = { uploadId: string; url: string; contentType: string; expiresAt: string };
+
+/** Asks the API for a 10-minute upload URL for the entry the cookie opens. The URL is a temporary credential for one object. */
+export async function startVideoUpload(body: { type: string; bytes: number }, csrf: string): Promise<RegistrationReply<{ upload: VideoUploadGrant }>> {
+  return requestRegistration("/registrations/current/video-uploads", { method: "POST", body, csrf });
+}
+
+/** Tells the API the browser finished its PUT; the API checks the stored object and attaches it (once, final). */
+export async function completeVideoUpload(uploadId: string, csrf: string): Promise<RegistrationReply<{ registration: RegistrationView }>> {
+  return requestRegistration(`/registrations/current/video-uploads/${uploadId}/complete`, { method: "POST", body: {}, csrf });
+}
+
+/** The last step: details, video, then this. The API checks everything again and finalizes the entry (or holds it for review). */
+export async function submitRegistration(csrf: string): Promise<RegistrationReply<{ registration: RegistrationView }>> {
+  return requestRegistration("/registrations/current/submit", { method: "POST", body: { confirm: true }, csrf });
 }

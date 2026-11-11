@@ -92,13 +92,13 @@ async function pick(page: Page, s: Sample) {
     s,
   );
 }
-/** A large file without allocating it: one megabyte repeated, so the size check sees more than 100 MB. */
+/** A large file without allocating it: one megabyte repeated, so the size check sees more than 50 MB (the owner's limit). */
 async function pickHuge(page: Page) {
   await page.evaluate(() => {
     const chunk = new Uint8Array(1024 * 1024);
     const input = document.getElementById("video-file") as HTMLInputElement;
     const dt = new DataTransfer();
-    dt.items.add(new File(Array.from({ length: 101 }, () => chunk), "huge.mp4", { type: "video/mp4" }));
+    dt.items.add(new File(Array.from({ length: 51 }, () => chunk), "huge.mp4", { type: "video/mp4" }));
     input.files = dt.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
@@ -131,7 +131,7 @@ test.describe("choosing a video", () => {
     ["a file that is not a video type", { type: "text/plain", name: "notes.txt", bytes: 200_000 }, /Choose an MP4, MOV or WebM/],
     ["a file that is too small", { seconds: 6, bytes: 50_000 }, /too small/],
     ["a file the browser cannot read", { garbage: true, bytes: 200_000 }, /could not read this video/],
-    ["a file over 100 MB", "huge", /over 100 MB/],
+    ["a file over 50 MB", "huge", /over 50 MB/],
   ];
   for (const [label, sample, message] of refused) {
     test(`refuses ${label}, in both languages, and nothing is requested or uploaded`, async ({ page }) => {
@@ -163,7 +163,8 @@ test.describe("uploading", () => {
 
     const [request, confirm] = await calls(page);
     expect(request!.fn).toBe("request");
-    expect(request!.input).toMatchObject({ submissionId: "bbbbbbbb-0000-4000-8000-0000000000b1", type: "video/mp4", seconds: 31 });
+    expect(Object.keys(request!.input).sort()).toEqual(["bytes", "type"]); // the entry comes from the cookie on the server, never from the page
+    expect(request!.input).toMatchObject({ type: "video/mp4" });
     const put = r2.puts[0]!;
     expect(put.url).toMatch(/^https:\/\/r2\.test\/pending\/00000000-0000-4000-8000-\d{12}\?/);
     expect(put.contentType).toBe("video/mp4");
@@ -226,6 +227,7 @@ test.describe("when the server says no", () => {
     ["not the parent's entry", { ok: false, code: "notFound" }, /could not find this entry/],
     ["too many attempts", { ok: false, code: "tooMany" }, /Too many attempts/],
     ["entry locked", { ok: false, code: "locked" }, /can no longer be changed/],
+    ["the one video is already attached", { ok: false, code: "already" }, /already has its video/],
     ["server unavailable", { ok: false, code: "unavailable" }, /unavailable right now/],
     ["the server cannot be reached", "throw", /connection dropped/],
   ];
@@ -255,10 +257,12 @@ test.describe("when the server says no", () => {
 });
 
 test.describe("states, keyboard and phone", () => {
-  test("an entry that already has a video says so, and offers to replace it", async ({ page }) => {
+  test("an entry that already has its video shows it as final, with no way to choose another (owner's rule)", async ({ page }) => {
     await open(page, "#has");
-    await expect(page.getByText("This entry has a video")).toBeVisible();
-    await expect(page.getByText("Choose a different video").first()).toBeVisible();
+    await expect(page.getByText("Video uploaded").first()).toBeVisible();
+    await expect(page.getByText(/final and cannot be changed/).first()).toBeVisible();
+    await expect(page.locator("#video-file")).toHaveCount(0);
+    await expect(page.getByText("Choose a different video")).toHaveCount(0);
   });
 
   test("final submission stays disabled, and with uploads off both steps are disabled with no file input", async ({ page }) => {
@@ -334,8 +338,11 @@ for (const vp of [{ n: 360, h: 780 }, { n: 390, h: 844 }, { n: 768, h: 1024 }, {
       test(`fits without horizontal scroll and every control is at least 44px (${state || "no video yet"})`, async ({ page }) => {
         test.skip(!css, "needs the built stylesheet: run `npm run build` first");
         await open(page, state);
-        await pick(page, { seconds: 45 });
-        await expect(page.getByText("45 seconds").first()).toBeVisible();
+        if (state === "#has") await expect(page.getByText("Video uploaded").first()).toBeVisible();
+        else {
+          await pick(page, { seconds: 45 });
+          await expect(page.getByText("45 seconds").first()).toBeVisible();
+        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         const small = await page.evaluate(() =>
           [...document.querySelectorAll("#root button, #root label, #root a, #root input[type=file]")]

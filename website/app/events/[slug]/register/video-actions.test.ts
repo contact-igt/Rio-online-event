@@ -1,141 +1,102 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { codeFrom } from "@/lib/upload/api-codes";
 
-// The server actions around the upload service: who the parent is, whether uploads are configured, rate limits, and that
-// nothing sensitive leaks. The service itself is covered in lib/upload/service.test.ts and supabase/tests/upload-flow.test.ts.
+// The upload server actions: they forward to the Express API with the entry's CSRF token, refuse obvious junk before calling it, and turn
+// the API's answers into codes the screen explains. The API's own rules are covered in backend/src/registration/video.test.ts.
 
 const h = vi.hoisted(() => ({
-  user: { id: "aaaaaaaa-0000-4000-8000-00000000000a" } as { id: string } | null,
-  available: true,
-  sessionLookups: 0,
-  deps: { store: { presignPut: vi.fn(), head: vi.fn(), copy: vi.fn(), remove: vi.fn() }, db: { issue: vi.fn(), check: vi.fn(), attach: vi.fn(), reject: vi.fn() } },
-  throwOnDeps: false,
+  current: { csrfToken: "csrf-1" } as { csrfToken: string } | null,
+  start: vi.fn(),
+  complete: vi.fn(),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createClient: async () => ({
-    auth: {
-      getUser: async () => {
-        h.sessionLookups++;
-        return { data: { user: h.user } };
-      },
-    },
-  }),
-}));
-vi.mock("@/lib/upload/server", () => ({
-  uploadsAvailable: () => h.available,
-  createUploadDeps: () => {
-    if (h.throwOnDeps) throw new Error("SECRET-DETAIL sb_secret_leak");
-    return h.deps;
-  },
+vi.mock("@/lib/registration/express", () => ({
+  currentRegistration: async () => (h.current ? { view: {}, csrfToken: h.current.csrfToken } : null),
+  startVideoUpload: h.start,
+  completeVideoUpload: h.complete,
 }));
 
 type Actions = typeof import("./video-actions");
 let actions: Actions;
-const SUB = "bbbbbbbb-0000-4000-8000-0000000000b1";
-const ask = (over: Record<string, unknown> = {}) => ({ submissionId: SUB, type: "video/mp4", bytes: 20 * 1024 * 1024, seconds: 45, ...over });
+const MB = 1024 * 1024;
+const ID = "11111111-2222-4333-8444-555555555555";
+const grant = { uploadId: ID, url: "https://acct.r2.cloudflarestorage.com/b/pending/x?X-Amz-Signature=s", contentType: "video/mp4", expiresAt: "2026-11-11T10:10:00.000Z" };
 
 beforeEach(async () => {
-  vi.resetModules(); // fresh rate limiters
-  h.user = { id: "aaaaaaaa-0000-4000-8000-00000000000a" };
-  h.available = true;
-  h.sessionLookups = 0;
-  h.throwOnDeps = false;
-  Object.values(h.deps.db).forEach((f) => f.mockReset());
-  Object.values(h.deps.store).forEach((f) => f.mockReset());
-  h.deps.db.issue.mockResolvedValue({ uploadId: "cccccccc-0000-4000-8000-0000000000c1", expiresAt: "2026-11-05T10:00:00Z" });
-  h.deps.store.presignPut.mockResolvedValue("https://r2.test/pending/cccccccc-0000-4000-8000-0000000000c1?sig=1");
+  h.current = { csrfToken: "csrf-1" };
+  h.start.mockReset();
+  h.complete.mockReset();
   actions = await import("./video-actions");
 });
 
 describe("requestVideoUpload", () => {
-  it("refuses a visitor who is not signed in, before touching the database or the bucket", async () => {
-    h.user = null;
-    expect(await actions.requestVideoUpload(ask())).toEqual({ ok: false, code: "notFound" });
-    expect(h.deps.db.issue).not.toHaveBeenCalled();
-    expect(h.deps.store.presignPut).not.toHaveBeenCalled();
+  it("asks the API with the entry's CSRF token and returns the 10-minute URL", async () => {
+    h.start.mockResolvedValue({ status: 201, body: { upload: grant } });
+    expect(await actions.requestVideoUpload({ type: "video/mp4", bytes: 20 * MB })).toEqual({ ok: true, ...grant });
+    expect(h.start).toHaveBeenCalledWith({ type: "video/mp4", bytes: 20 * MB }, "csrf-1");
   });
 
-  it("stays unavailable while uploads are switched off or not configured, and does nothing else (not even a session lookup)", async () => {
-    h.available = false;
-    expect(await actions.requestVideoUpload(ask())).toEqual({ ok: false, code: "unavailable" });
-    expect(h.sessionLookups).toBe(0);
-    expect(h.deps.db.issue).not.toHaveBeenCalled();
-    expect(h.deps.store.presignPut).not.toHaveBeenCalled();
+  it.each([
+    ["over 50 MB", { type: "video/mp4", bytes: 50 * MB + 1 }, "tooBig"],
+    ["not a video", { type: "image/png", bytes: 20 * MB }, "type"],
+    ["too small", { type: "video/mp4", bytes: 10 }, "tooSmall"],
+    ["not a number", { type: "video/mp4", bytes: Number.NaN }, "tooSmall"],
+  ])("refuses %s without calling the API", async (_label, input, code) => {
+    expect(await actions.requestVideoUpload(input)).toEqual({ ok: false, code });
+    expect(h.start).not.toHaveBeenCalled();
   });
 
-  it("takes the parent from the verified session, never from the request", async () => {
-    const forged = { ...ask(), ownerId: "99999999-0000-4000-8000-000000000009", owner_id: "99999999-0000-4000-8000-000000000009" };
-    const res = await actions.requestVideoUpload(forged);
-    expect(res.ok).toBe(true);
-    expect(h.deps.db.issue).toHaveBeenCalledExactlyOnceWith("aaaaaaaa-0000-4000-8000-00000000000a", SUB, "video/mp4", 20 * 1024 * 1024);
+  it("says the entry was not found when no recovery cookie opens one", async () => {
+    h.current = null;
+    expect(await actions.requestVideoUpload({ type: "video/mp4", bytes: 20 * MB })).toEqual({ ok: false, code: "notFound" });
+    expect(h.start).not.toHaveBeenCalled();
   });
 
-  it("limits each parent to 10 authorizations per 10 minutes, and other parents are unaffected", async () => {
-    for (let i = 0; i < 10; i++) expect((await actions.requestVideoUpload(ask())).ok, String(i)).toBe(true);
-    expect(await actions.requestVideoUpload(ask())).toEqual({ ok: false, code: "tooMany" });
-    expect(h.deps.db.issue).toHaveBeenCalledTimes(10);
-    h.user = { id: "dddddddd-0000-4000-8000-0000000000d1" };
-    expect((await actions.requestVideoUpload(ask())).ok).toBe(true);
+  it("explains that the one video is already attached", async () => {
+    h.start.mockResolvedValue({ status: 409, body: null, code: "video_already_uploaded" });
+    expect(await actions.requestVideoUpload({ type: "video/mp4", bytes: 20 * MB })).toEqual({ ok: false, code: "already" });
   });
 
-  it("returns only a plain failure code when a dependency throws, never its message", async () => {
-    h.throwOnDeps = true;
-    const res = await actions.requestVideoUpload(ask());
-    expect(res).toEqual({ ok: false, code: "unavailable" });
-    expect(JSON.stringify(res)).not.toMatch(/SECRET|sb_secret/);
-  });
-
-  it("copes with a malformed request without throwing, and signs nothing", async () => {
-    for (const bad of [undefined, null, {}, { submissionId: 5 }, ask({ bytes: "big" }), ask({ type: null }), ask({ seconds: "forty" })]) {
-      const res = await actions.requestVideoUpload(bad as never);
-      expect(res.ok, JSON.stringify(bad)).toBe(false);
-    }
-    expect(h.deps.db.issue).not.toHaveBeenCalled();
-    expect(h.deps.store.presignPut).not.toHaveBeenCalled();
-  });
-
-  it("returns the presigned URL only in the successful result, with no storage key field", async () => {
-    const res = await actions.requestVideoUpload(ask());
-    expect(res).toMatchObject({ ok: true, uploadId: "cccccccc-0000-4000-8000-0000000000c1", contentType: "video/mp4" });
-    expect(Object.keys(res).sort()).toEqual(["contentType", "expiresAt", "ok", "uploadId", "url"]);
+  it("never lets an exception's text reach the browser", async () => {
+    h.start.mockRejectedValue(new Error("SECRET-DETAIL https://acct.r2.cloudflarestorage.com"));
+    const r = await actions.requestVideoUpload({ type: "video/mp4", bytes: 20 * MB });
+    expect(r).toEqual({ ok: false, code: "unavailable" });
+    expect(JSON.stringify(r)).not.toContain("SECRET");
   });
 });
 
 describe("confirmVideoUpload", () => {
-  it("refuses a visitor who is not signed in, and an unconfigured server", async () => {
-    h.user = null;
-    expect(await actions.confirmVideoUpload({ uploadId: SUB })).toEqual({ ok: false, code: "notFound" });
-    h.user = { id: "aaaaaaaa-0000-4000-8000-00000000000a" };
-    h.available = false;
-    h.sessionLookups = 0;
-    expect(await actions.confirmVideoUpload({ uploadId: SUB })).toEqual({ ok: false, code: "unavailable" });
-    expect(h.sessionLookups).toBe(0);
-    expect(h.deps.db.check).not.toHaveBeenCalled();
-    expect(h.deps.store.head).not.toHaveBeenCalled();
+  it("reports the upload done with the CSRF token", async () => {
+    h.complete.mockResolvedValue({ status: 200, body: { registration: {} } });
+    expect(await actions.confirmVideoUpload({ uploadId: ID })).toEqual({ ok: true });
+    expect(h.complete).toHaveBeenCalledWith(ID, "csrf-1");
   });
 
-  it("authorizes in the database first: an unauthorized request never reaches the bucket", async () => {
-    h.deps.db.check.mockRejectedValue(new Error("not_found"));
-    expect(await actions.confirmVideoUpload({ uploadId: SUB })).toEqual({ ok: false, code: "notFound" });
-    expect(h.deps.db.check).toHaveBeenCalledExactlyOnceWith("aaaaaaaa-0000-4000-8000-00000000000a", SUB);
-    expect(h.deps.store.head).not.toHaveBeenCalled();
+  it("refuses an id that is not a uuid without calling the API (no path tricks)", async () => {
+    for (const bad of ["", "../../admin", `${ID}/../x`, "not-a-uuid"]) expect(await actions.confirmVideoUpload({ uploadId: bad }), bad).toEqual({ ok: false, code: "invalid" });
+    expect(h.complete).not.toHaveBeenCalled();
   });
+});
 
-  it("verifies the stored object for the signed-in parent only, and rate limits", async () => {
-    h.deps.db.check.mockResolvedValue({ bytes: 20 * 1024 * 1024, type: "video/mp4" });
-    h.deps.store.head.mockResolvedValue(null);
-    expect(await actions.confirmVideoUpload({ uploadId: SUB })).toEqual({ ok: false, code: "missing" });
-    for (let i = 0; i < 29; i++) await actions.confirmVideoUpload({ uploadId: SUB });
-    expect(await actions.confirmVideoUpload({ uploadId: SUB })).toEqual({ ok: false, code: "tooMany" });
-  });
-
-  it("never logs", async () => {
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
-    await actions.requestVideoUpload(ask());
-    await actions.confirmVideoUpload({ uploadId: SUB });
-    h.throwOnDeps = true;
-    await actions.requestVideoUpload(ask());
-    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
+describe("codeFrom: the API's answer as a message code", () => {
+  it.each([
+    [{ status: 422, fields: [{ field: "bytes", problem: "too_big" }] }, "tooBig"],
+    [{ status: 422, fields: [{ field: "bytes", problem: "too_small" }] }, "tooSmall"],
+    [{ status: 422, fields: [{ field: "type", problem: "unsupported_type" }] }, "type"],
+    [{ status: 422, fields: [{ field: "video", problem: "mismatch" }] }, "mismatch"],
+    [{ status: 422, fields: [{ field: "video", problem: "too_big" }] }, "tooBig"],
+    [{ status: 409, code: "video_already_uploaded" }, "already"],
+    [{ status: 403, code: "registration_closed" }, "closed"],
+    [{ status: 409, code: "not_editable" }, "locked"],
+    [{ status: 409, code: "upload_not_current" }, "notCurrent"],
+    [{ status: 404, code: "upload_not_found" }, "notCurrent"],
+    [{ status: 409, code: "upload_expired" }, "expired"],
+    [{ status: 409, code: "upload_missing" }, "missing"],
+    [{ status: 401, code: "no_registration" }, "notFound"],
+    [{ status: 429, code: "rate_limited" }, "tooMany"],
+    [{ status: 503, code: "uploads_unavailable" }, "unavailable"],
+    [{ status: 403, code: "csrf_invalid" }, "unavailable"],
+  ])("%j -> %s", (reply, code) => {
+    expect(codeFrom(reply)).toBe(code);
   });
 });

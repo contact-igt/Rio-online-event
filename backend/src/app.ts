@@ -14,6 +14,7 @@ import { errorHandler, notFoundHandler } from "./http/errors.ts";
 import { healthRouter } from "./http/health.ts";
 import { requestId, requestIdOf } from "./http/request-id.ts";
 import { securityHeaders } from "./http/security-headers.ts";
+import { videoStoreFor, type VideoStore } from "./storage/r2.ts";
 
 export type AppState = { shuttingDown: boolean };
 
@@ -24,6 +25,8 @@ export type AppDeps = {
   /** The opened database. Without it only the health route exists: staff routes are mounted only when there is somewhere to keep sessions. */
   db?: DatabaseAdapter;
   now?: () => Date;
+  /** The private video bucket. Omitted: built from the R2 settings (null when they are absent). Tests pass a fake. */
+  video?: VideoStore | null;
   /** Where later modules (and tests) attach their own routes; they receive the same authentication dependencies the staff routes use. */
   mount?: (app: Express, auth: AuthDeps) => void;
 };
@@ -64,10 +67,11 @@ export function createApp(deps: AppDeps): Express {
   app.use("/api/v1", healthRouter(state));
   if (deps.db) {
     const auth = authDeps(deps.db, config.auth, deps.now);
+    const video = deps.video === undefined ? videoStoreFor(config) : deps.video;
     app.use("/api/v1/staff", staffRouter(auth));
     app.use("/api/v1/admin", adminRouter(auth));
-    app.use("/api/v1/judge", judgeRouter(auth));
-    app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now)));
+    app.use("/api/v1/judge", judgeRouter(auth, video));
+    app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now, video)));
     app.use("/api/v1", resultsRouter(deps.db, deps.now ?? (() => new Date())));
     deps.mount?.(app, auth);
   }

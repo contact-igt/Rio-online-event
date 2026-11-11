@@ -23,8 +23,7 @@ const row = (status: string) => ({
 async function main() {
   const rows = state === "new" || state === "closed" ? [] : [row(state)];
   window.__reg = { rows, open: state !== "closed", email: false, uploads: true, finalize: true, ...(window as { __regOverride?: object }).__regOverride };
-  const searchParams = Promise.resolve({ draft: rows[0]?.id as string | undefined, saved: undefined as string | undefined });
-  const element = await RegisterPage({ params: Promise.resolve({ slug: "kutti-pesalar" }), searchParams });
+  const element = await RegisterPage({ params: Promise.resolve({ slug: "kutti-pesalar" }) });
   createRoot(document.getElementById("root")!).render(element);
   document.body.dataset.ready = "1";
 }

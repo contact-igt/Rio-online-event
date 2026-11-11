@@ -8,10 +8,11 @@ import { reg, type Msg } from "@/lib/registration/messages";
 import { readVideoDuration } from "@/lib/upload/duration";
 import { checkFile, checkVideo, videoTypeOf, type UploadErrorCode, type VideoProblem } from "@/lib/upload/rules";
 
-// Direct browser-to-bucket upload of one video for a saved entry. The checks below (type, size, length) only save the
-// parent a wasted upload; the server repeats the type and size rules and verifies the stored object. The file goes to
-// the bucket with a one-use presigned URL; the app server never receives the video. A failed or cancelled attempt is
-// started again from the beginning, which asks the server for a fresh authorization (never reusing an old URL).
+// Direct browser-to-bucket upload of the ONE video of a saved entry (the entry is the one the parent's recovery cookie opens). The checks
+// below (type, size, length) only save the parent a wasted upload; the API repeats the type and size rules and verifies the stored object.
+// The file goes to the bucket with a 10-minute presigned URL; neither this site nor the API receives the video. A failed or cancelled
+// attempt starts again from the beginning with a fresh URL. Once a video is attached it is final (owner's rule, 2026-11-11): the panel then
+// shows it as done and offers no way to choose another.
 
 type Picked = { file: File; type: string; seconds: number };
 type State =
@@ -42,9 +43,9 @@ function putFile(url: string, file: File, type: string, onProgress: (pct: number
   });
 }
 
-export function UploadPanel({ submissionId, hasVideo }: { submissionId: string; hasVideo: boolean }) {
+export function UploadPanel({ hasVideo }: { hasVideo: boolean }) {
   const router = useRouter();
-  const [state, setState] = useState<State>({ kind: "idle" });
+  const [state, setState] = useState<State>(hasVideo ? { kind: "done" } : { kind: "idle" });
   const xhr = useRef<XMLHttpRequest | null>(null);
   const busy = state.kind === "checking" || state.kind === "uploading" || state.kind === "verifying";
 
@@ -62,7 +63,7 @@ export function UploadPanel({ submissionId, hasVideo }: { submissionId: string; 
 
   async function upload(picked: Picked) {
     setState({ kind: "uploading", picked, pct: 0 });
-    const started = await requestVideoUpload({ submissionId, type: picked.type, bytes: picked.file.size, seconds: picked.seconds }).catch(() => null);
+    const started = await requestVideoUpload({ type: picked.type, bytes: picked.file.size }).catch(() => null);
     if (!started) return setState({ kind: "failed", picked, message: ERRORS.network }); // the server could not be reached
     if (!started.ok) return setState({ kind: "failed", picked, message: message(started.code) });
     try {
@@ -87,12 +88,6 @@ export function UploadPanel({ submissionId, hasVideo }: { submissionId: string; 
       <p className="text-rio-slate">
         <Bilingual m={reg.upload.rules} />
       </p>
-      {hasVideo && state.kind !== "done" && (
-        <p className="font-semibold text-rio-navy">
-          <Bilingual m={reg.upload.hasVideo} />
-        </p>
-      )}
-
       {state.kind !== "done" && (
         <div>
           <input
@@ -110,8 +105,8 @@ export function UploadPanel({ submissionId, hasVideo }: { submissionId: string; 
             htmlFor="video-file"
             className={`${button} btn-outline cursor-pointer peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-rio-blue ${busy ? "pointer-events-none opacity-75" : ""}`}
           >
-            <span>{(hasVideo || state.kind === "ready" || state.kind === "failed" ? reg.upload.chooseOther : reg.upload.choose).ta}</span>
-            <span lang="en" className="font-medium">{(hasVideo || state.kind === "ready" || state.kind === "failed" ? reg.upload.chooseOther : reg.upload.choose).en}</span>
+            <span>{(state.kind === "ready" || state.kind === "failed" ? reg.upload.chooseOther : reg.upload.choose).ta}</span>
+            <span lang="en" className="font-medium">{(state.kind === "ready" || state.kind === "failed" ? reg.upload.chooseOther : reg.upload.choose).en}</span>
           </label>
         </div>
       )}

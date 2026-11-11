@@ -56,7 +56,7 @@ describe("submitStep: what the registration page shows", () => {
 
   it("flag on, registration open and an UPLOADED entry: the working step, with the details to confirm", () => {
     expect(submitStep({ open: true, current: uploaded, event }, on)).toEqual({
-      kind: "on", submissionId: uploaded.id, slug: "kutti-pesalar", childName: "Asha", childAge: 9, eventNameTa: event.nameTa, eventNameEn: "Little Speaker", mediaConsent: false,
+      kind: "on", childName: "Asha", childAge: 9, eventNameTa: event.nameTa, eventNameEn: "Little Speaker", mediaConsent: false,
     });
   });
 
