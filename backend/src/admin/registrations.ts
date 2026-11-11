@@ -29,6 +29,8 @@ export type RegistrationRow = {
   childAge: number;
   guardianName: string;
   answered: number;
+  /** True when the entry has its one checked video (an upload that was started but not finished does not count). */
+  hasVideo: boolean;
   openDuplicateFlag: boolean;
   createdAt: string;
   updatedAt: string;
@@ -55,10 +57,11 @@ export async function listRegistrations(db: Queryable, query: ListQuery): Promis
   const rows = (
     await db.query<{
       entry_code: string; status: string; slug: string; name_ta: string; name_en: string; version: unknown; child_name: string; child_age: unknown; guardian_name: string;
-      answered: unknown; dup: unknown; created_at: unknown; updated_at: unknown;
+      answered: unknown; video: unknown; dup: unknown; created_at: unknown; updated_at: unknown;
     }>(
       `SELECT s.entry_code, s.status, e.slug, e.name_ta, e.name_en, qs.version, s.child_name, s.child_age, s.guardian_name, s.created_at, s.updated_at,
          (SELECT COUNT(*) FROM entry_answers a WHERE a.submission_id = s.id) AS answered,
+         (SELECT COUNT(*) FROM video_uploads v WHERE v.submission_id = s.id AND v.status = 'verified') AS video,
          (SELECT COUNT(*) FROM duplicate_reviews d WHERE d.submission_id = s.id AND d.status IN ('held', 'flagged')) AS dup
        FROM submissions s JOIN events e ON e.id = s.event_id JOIN question_sets qs ON qs.id = s.question_set_id ${filter}
        ORDER BY s.created_at DESC, s.id DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`,
@@ -80,6 +83,7 @@ export async function listRegistrations(db: Queryable, query: ListQuery): Promis
       childAge: n(r.child_age),
       guardianName: r.guardian_name,
       answered: n(r.answered),
+      hasVideo: n(r.video) > 0,
       openDuplicateFlag: n(r.dup) > 0,
       createdAt: asDate(r.created_at).toISOString(),
       updatedAt: asDate(r.updated_at).toISOString(),
@@ -107,6 +111,8 @@ export type RegistrationDetail = {
   guardian: { name: string; mobile: string; email: string | null };
   consent: { guardian: { version: string | null; at: string | null }; media: { granted: boolean | null; version: string | null; at: string | null } };
   answers: DetailAnswer[];
+  /** The entry's one checked video, if any: size, type and when it was checked. Never an object key or a URL. */
+  video: { uploaded: boolean; bytes: number | null; contentType: string | null; uploadedAt: string | null };
   duplicates: { status: string; reason: string; matchedEntryCode: string | null }[];
   createdAt: string;
   updatedAt: string;
@@ -168,6 +174,8 @@ export async function loadRegistration(db: Queryable, now: Date, actor: { staffI
     )
   ).rows;
 
+  const video = (await db.query<{ verified_bytes: unknown; content_type: string; verified_at: unknown }>("SELECT verified_bytes, content_type, verified_at FROM video_uploads WHERE submission_id = ? AND status = 'verified'", [id])).rows[0];
+
   await writeAudit(db, now, { actorType: "staff", actorStaffId: actor.staffId, action: "registration.viewed", entityType: "submission", entityId: id, requestId: actor.requestId });
 
   return {
@@ -182,6 +190,7 @@ export async function loadRegistration(db: Queryable, now: Date, actor: { staffI
       media: { granted: s.mc === null || s.mc === undefined ? null : n(s.mc) === 1, version: s.mcv, at: isoOrNull(s.mca) },
     },
     answers,
+    video: video ? { uploaded: true, bytes: n(video.verified_bytes), contentType: video.content_type, uploadedAt: isoOrNull(video.verified_at) } : { uploaded: false, bytes: null, contentType: null, uploadedAt: null },
     duplicates: duplicates.map((d) => ({ status: d.status, reason: d.reason, matchedEntryCode: d.matched })),
     createdAt: asDate(s.created_at).toISOString(),
     updatedAt: asDate(s.updated_at).toISOString(),

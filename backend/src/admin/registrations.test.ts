@@ -113,7 +113,7 @@ describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
     await answer(id, ids.setA1!, "school", { text: "Rio School" });
     const { body, text } = await get("/api/v1/admin/registrations", admin);
     expect(body.total).toBe(1);
-    expect(body.registrations[0]).toMatchObject({ entryCode: "RIO00001", status: "draft", competitionSlug: "alpha-contest", questionSetVersion: 1, childName: "Child Person", childAge: 5, guardianName: "Parent Person", answered: 1, openDuplicateFlag: false });
+    expect(body.registrations[0]).toMatchObject({ entryCode: "RIO00001", status: "draft", competitionSlug: "alpha-contest", questionSetVersion: 1, childName: "Child Person", childAge: 5, guardianName: "Parent Person", answered: 1, hasVideo: false, openDuplicateFlag: false });
     expect(text).not.toContain("9876543210");
     expect(text).not.toContain("parent@example.org");
   });
@@ -162,8 +162,20 @@ describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
     expect(r.answers[1]).toMatchObject({ value: "b", chosen: [{ ta: "ஆ", en: "Beta" }] });
     expect(r.answers[2]).toMatchObject({ value: ["a", "c"], chosen: [{ ta: "அ", en: "Alpha" }, { ta: "இ", en: "Gamma" }] });
     expect(r.answers[3]).toMatchObject({ value: null });
+    expect(r.video).toEqual({ uploaded: false, bytes: null, contentType: null, uploadedAt: null });
+    // once the entry has its checked video, the list and the detail say so (an unfinished upload does not count), without any storage key
+    const key = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at) VALUES (?, 'bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'video/mp4', 200000, 'issued', ?)", [id, new Date(Date.now() + 3_600_000)]);
+    expect((await get("/api/v1/admin/registrations/RIO00100", admin)).body.registration.video.uploaded).toBe(false);
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at, verified_at, verified_bytes) VALUES (?, ?, 'video/mp4', 7000000, 'verified', ?, ?, 7000000)", [id, key, new Date(Date.now() + 3_600_000), now()]);
+    const withVideo = await get("/api/v1/admin/registrations/RIO00100", admin);
+    expect(withVideo.body.registration.video).toMatchObject({ uploaded: true, bytes: 7000000, contentType: "video/mp4" });
+    expect(withVideo.text).not.toContain(key);
+    let listed: Json | undefined;
+    for (let page = 1; !listed && page <= 5; page++) listed = (await get(`/api/v1/admin/registrations?page=${page}`, admin)).body.registrations.find((x: Json) => x.entryCode === "RIO00100");
+    expect(listed?.hasVideo).toBe(true);
     expect(text).not.toContain("CHANGED");
-    expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.viewed'")).toBe(before + 1);
+    expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.viewed'")).toBe(before + 3); // one view per open: the first, and the two video checks above
     const audit = (await sql<{ details: string | null; entity_id: string }>("SELECT details, entity_id FROM audit_log WHERE action = 'registration.viewed' ORDER BY id DESC LIMIT 1")).rows[0]!;
     expect(audit.entity_id).toBe(String(id));
     expect(`${audit.details ?? ""}`).not.toMatch(/Detail Child|Parent Person|9876543210|parent@example/);

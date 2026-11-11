@@ -34,6 +34,8 @@ export const loadSettings = () => get<ApiSettings>("/admin/settings");
 export type RegistrationRow = {
   entryCode: string; status: string; competitionSlug: string; competitionNameTa: string; competitionNameEn: string; questionSetVersion: number;
   childName: string; childAge: number; guardianName: string; answered: number; openDuplicateFlag: boolean; createdAt: string; updatedAt: string;
+  /** Whether the entry has its one checked video. Absent from an API that predates video upload. */
+  hasVideo?: boolean;
 };
 export type RegistrationList = { registrations: RegistrationRow[]; total: number; page: number; pageSize: number };
 export type RegistrationDetail = {
@@ -42,6 +44,8 @@ export type RegistrationDetail = {
   consent: { guardian: { version: string | null; at: string | null }; media: { granted: boolean | null; version: string | null; at: string | null } };
   answers: { key: string; type: string; promptTa: string; promptEn: string; required: boolean; value: string | number | string[] | null; chosen: { ta: string; en: string }[] | null }[];
   duplicates: { status: string; reason: string; matchedEntryCode: string | null }[];
+  /** The entry's one checked video, if any (never a storage key or URL). Absent from an API that predates video upload. */
+  video?: { uploaded: boolean; bytes: number | null; contentType: string | null; uploadedAt: string | null };
   createdAt: string; updatedAt: string;
 };
 

@@ -9,6 +9,7 @@ export const metadata = { title: "Registration · Admin", robots: { index: false
 export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, string> = { draft: "Draft", held: "Held", finalized: "Finalized", withdrawn: "Withdrawn", rejected: "Rejected" };
+const VIDEO_TYPE: Record<string, string> = { "video/mp4": "MP4", "video/quicktime": "MOV", "video/webm": "WebM" };
 const REASON: Record<string, string> = { same_child_mobile_event: "Same child name and mobile number in this competition", similar_name: "Similar name", manual: "Flagged by hand" };
 
 function Row({ label, ta, children }: { label: string; ta?: string; children: React.ReactNode }) {
@@ -61,6 +62,13 @@ export default async function AdminRegistrationPage({ params }: { params: Promis
                 <Row label="Media consent">
                   {loaded.data.consent.media.granted === null ? "Not asked" : `${loaded.data.consent.media.granted ? "Granted" : "Declined"} (${loaded.data.consent.media.version}), ${formatIst(loaded.data.consent.media.at)}`}
                 </Row>
+                {loaded.data.video && (
+                  <Row label="Video" ta="வீடியோ">
+                    {loaded.data.video.uploaded
+                      ? `Uploaded · ${((loaded.data.video.bytes ?? 0) / (1024 * 1024)).toFixed(1)} MB · ${VIDEO_TYPE[loaded.data.video.contentType ?? ""] ?? "video"} · ${formatIst(loaded.data.video.uploadedAt)}`
+                      : "Not uploaded yet"}
+                  </Row>
+                )}
                 <Row label="Question version">v{loaded.data.questionSetVersion}</Row>
                 <Row label="Created">{formatIst(loaded.data.createdAt)}</Row>
                 <Row label="Updated">{formatIst(loaded.data.updatedAt)}</Row>
