@@ -12,6 +12,11 @@ export function requireDatabase(config: Config): DatabaseConfig {
   return config.database;
 }
 
+/** Production takes its settings from the hosting platform only. A leftover .env.local would let a developer's values leak into it. */
+export function assertNoLocalEnvFile(config: Config, localEnvFileExists: boolean): void {
+  if (config.env === "production" && localEnvFileExists) throw new GuardError("A .env.local file exists in a production run. Production reads the hosting platform's variables only; remove the file.");
+}
+
 const targetName = (db: DatabaseConfig): string => (db.dialect === "mysql" ? db.database : db.path);
 
 /** In production a migration runs only when the operator types the database name into RIO_CONFIRM_MIGRATE for that one command. */
@@ -47,6 +52,7 @@ export function testEnvironment(env: Record<string, string | undefined>): Record
   const url = env.RIO_TEST_DATABASE_URL;
   return {
     NODE_ENV: "test",
+    APP_ENV: "test",
     ...(url
       ? { DB_DIALECT: "mysql", DATABASE_URL: url, DB_ALLOWED_HOST: env.RIO_TEST_DB_ALLOWED_HOST ?? "127.0.0.1", ...(env.RIO_TEST_DB_ENGINE ? { DB_ENGINE: env.RIO_TEST_DB_ENGINE } : {}) }
       : { DB_DIALECT: "sqlite", SQLITE_PATH: env.RIO_TEST_SQLITE_PATH ?? ":memory:" }),

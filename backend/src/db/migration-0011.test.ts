@@ -22,7 +22,7 @@ describe.each(dialects)("%s migration 0011 (optional guardian e-mail)", (dialect
     db = openTestDatabase(dialect);
     await dropAppSchema(db, TRACKING);
     const all = await loadMigrations(migrationsDir(dialect));
-    expect(all.map((m) => m.version).slice(-2)).toEqual(["0010", "0011"]);
+    expect(all.map((m) => m.version).slice(9, 11)).toEqual(["0010", "0011"]);
     await migrate(db, all.filter((m) => m.version <= "0010"), TRACKING);
 
     // A database as it stood after M2B: one competition and set, a finalized entry with everything attached to it, and a draft.
@@ -50,7 +50,7 @@ describe.each(dialects)("%s migration 0011 (optional guardian e-mail)", (dialect
     await q("INSERT INTO scores (judge_id, submission_id, marks_hundredths) VALUES (2, 1, 7000)");
     await q("INSERT INTO duplicate_reviews (event_id, submission_id, matched_submission_id, status, reason) VALUES (1, 2, 1, 'flagged', 'same_child_mobile_event')");
 
-    expect(await migrate(db, all, TRACKING)).toEqual({ applied: ["0011"] });
+    expect(await migrate(db, all.filter((m) => m.version <= "0011"), TRACKING)).toEqual({ applied: ["0011"] });
   }, 120_000);
   afterAll(async () => {
     await dropAppSchema(db, TRACKING);

@@ -35,6 +35,7 @@ with `SHOW GRANTS FOR 'rio_app'@'localhost';` after a restart of MySQL before re
 
 ```
 NODE_ENV=development
+APP_ENV=development
 DB_DIALECT=mysql
 DB_ENGINE=mariadb
 DB_ALLOWED_HOST=127.0.0.1
@@ -43,6 +44,8 @@ ALLOWED_ORIGINS=http://localhost:3001
 PUBLIC_ORIGINS=http://localhost:3000
 ```
 Percent-encode special characters in the password (`@` becomes `%40`). The backend refuses to start if the host in `DATABASE_URL` is not `DB_ALLOWED_HOST`.
+
+**How the environment is chosen.** `NODE_ENV` and `APP_ENV` must name the same environment, and `NODE_ENV` alone never authorises a database. In development the database host must be a loopback address (a hosted host is refused), and `npm run dev`, `db:*` and `staff:*` read this file. `npm run build` needs no database variables, and nothing runs migrations when the server starts: `npm run db:migrate` is always typed by you. At start-up the server checks that the connected server is the engine named in `DB_ENGINE` and that `SELECT DATABASE()` is the database named in `DATABASE_URL`, and refuses to run otherwise. Production never reads this file: if `.env.local` exists on a production run, the server and the `db:*` tools refuse to start.
 
 ## 3. Everyday commands (inside `backend/`)
 

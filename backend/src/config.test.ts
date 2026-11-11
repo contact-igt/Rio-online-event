@@ -58,7 +58,19 @@ describe("loadConfig", () => {
   });
 
   describe("database selection", () => {
-    const mysql = (over: Record<string, string> = {}) => ({ DB_DIALECT: "mysql", DATABASE_URL: "mysql://app:pw@db.internal:3306/rio_hospital", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org", ...over });
+    // Defaults to a production-shaped configuration; a test that wants another environment names NODE_ENV (and gets a matching local setup).
+    const mysql = (over: Record<string, string> = {}) => {
+      const production = (over.NODE_ENV ?? "production") === "production";
+      return {
+        DB_DIALECT: "mysql",
+        DATABASE_URL: production ? "mysql://app:pw@db.internal:3306/rio_hospital" : "mysql://app:pw@127.0.0.1:3306/rio_hospital",
+        DB_ALLOWED_HOST: production ? "db.internal" : "127.0.0.1",
+        ALLOWED_ORIGINS: "https://admin.example.org",
+        NODE_ENV: "production",
+        ...(production ? { APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio_hospital" } : {}),
+        ...over,
+      };
+    };
 
     it("accepts sqlite for development and a mysql:// URL whose host is the allowed host", () => {
       expect(loadConfig({ DB_DIALECT: "sqlite", SQLITE_PATH: "./data/dev.sqlite" }).database).toEqual({ dialect: "sqlite", path: "./data/dev.sqlite" });
@@ -80,7 +92,7 @@ describe("loadConfig", () => {
     });
 
     it("allows the local development database rio_hospital on the loopback address", () => {
-      const env = mysql({ DATABASE_URL: "mysql://root:pw@127.0.0.1:3306/rio_hospital", DB_ALLOWED_HOST: "127.0.0.1" });
+      const env = mysql({ NODE_ENV: "development", DATABASE_URL: "mysql://root:pw@127.0.0.1:3306/rio_hospital", DB_ALLOWED_HOST: "127.0.0.1" });
       expect(loadConfig(env).database).toMatchObject({ host: "127.0.0.1", database: "rio_hospital" });
     });
 
@@ -163,7 +175,7 @@ describe("loadConfig", () => {
 });
 
 describe("loadConfig: staff authentication settings", () => {
-  const prod = { NODE_ENV: "production", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:p@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
+  const prod = { NODE_ENV: "production", APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:p@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
 
   it("reads the allowed origins, proxy hops, lifetimes and Argon2 cost", () => {
     expect(
@@ -233,7 +245,7 @@ describe("loadConfig: public registration settings", () => {
   });
 
   it("requires https for public origins in production, without echoing the value", () => {
-    const prod = { NODE_ENV: "production", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:p@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
+    const prod = { NODE_ENV: "production", APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:p@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
     const message = failure({ ...prod, PUBLIC_ORIGINS: "http://insecure-site.example.org" });
     expect(message).toContain("PUBLIC_ORIGINS");
     expect(message).not.toContain("insecure-site");

@@ -109,7 +109,7 @@ describe.each(dialects)("%s staff command line", (dialect: Dialect) => {
 });
 
 describe("production safety", () => {
-  const production = { NODE_ENV: "production", DB_DIALECT: "mysql", DATABASE_URL: "mysql://rio_app:s3cret-pass-word@db.internal:3306/rio_prod", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org", ARGON2_MEMORY_KIB: "19456", ARGON2_PASSES: "2" };
+  const production = { NODE_ENV: "production", APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio_prod", DB_DIALECT: "mysql", DATABASE_URL: "mysql://rio_app:s3cret-pass-word@db.internal:3306/rio_prod", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org", ARGON2_MEMORY_KIB: "19456", ARGON2_PASSES: "2" };
 
   it("refuses to run in production unless the operator names the database, and never opens it or prints the connection string", async () => {
     let opened = false;

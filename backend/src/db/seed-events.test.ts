@@ -197,7 +197,7 @@ describe("the seed command (a real child process, SQLite file)", () => {
   });
 
   it("refuses to run in production and never opens the database", () => {
-    const env = { PATH: process.env.PATH ?? "", NODE_ENV: "production", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:s3cret-pw@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
+    const env = { PATH: process.env.PATH ?? "", NODE_ENV: "production", APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio", DB_DIALECT: "mysql", DATABASE_URL: "mysql://u:s3cret-pw@db.internal:3306/rio", DB_ALLOWED_HOST: "db.internal", ALLOWED_ORIGINS: "https://admin.example.org" };
     const r = spawnSync(process.execPath, [join(import.meta.dirname, "seed-events-cli.ts")], { env, encoding: "utf8" });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("Seeding is for local development");

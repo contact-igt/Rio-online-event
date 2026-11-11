@@ -25,3 +25,10 @@ export async function assertEngineMatches(db: DatabaseAdapter, database: Databas
       : "The database server is MySQL but DB_ENGINE is mariadb. Set DB_ENGINE=mysql.",
   );
 }
+
+/** The connection must land in the database the operator approved, not just any database the account can reach. */
+export async function assertDatabaseName(db: DatabaseAdapter, database: DatabaseConfig): Promise<void> {
+  if (database.dialect !== "mysql") return;
+  const row = (await db.query<{ d: string | null }>("SELECT DATABASE() AS d")).rows[0];
+  if (row?.d !== database.database) throw new GuardError("The connected database is not the one named in DATABASE_URL.");
+}

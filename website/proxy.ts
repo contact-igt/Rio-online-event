@@ -7,5 +7,5 @@ export function proxy(request: NextRequest) {
 
 // Only the parent routes that use the session. The public landing and event pages stay fully static.
 export const config = {
-  matcher: ["/signin/:path*", "/account", "/events/:slug/register"],
+  matcher: ["/signin/:path*", "/account"],
 };

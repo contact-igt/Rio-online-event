@@ -1,8 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { ConfigError, loadConfig } from "../config.ts";
-import { assertEngineMatches, migrationFolder } from "./engine.ts";
+import { existsSync } from "node:fs";
+import { assertDatabaseName, assertEngineMatches, migrationFolder } from "./engine.ts";
 import { DatabaseError } from "./errors.ts";
-import { assertMigrateAllowed, assertResetAllowed, GuardError, requireDatabase, testEnvironment } from "./guards.ts";
+import { assertMigrateAllowed, assertNoLocalEnvFile, assertResetAllowed, GuardError, requireDatabase, testEnvironment } from "./guards.ts";
 import { checkParity, getStatus, loadMigrations, migrate, MigrationError, problemsOf } from "./migrate.ts";
 import { checkReadiness } from "./readiness.ts";
 import { openDatabase } from "./open.ts";
@@ -39,6 +40,7 @@ async function main(command: string | undefined): Promise<number> {
   if (command === "verify") out(`Dialect folders match.`);
 
   const config = loadConfig(process.env);
+  assertNoLocalEnvFile(config, existsSync(".env.local"));
   if (command === "verify" && !config.database) {
     out("No database configured: only the dialect folders were checked."); // CI and fresh checkouts
     return 0;
@@ -48,6 +50,7 @@ async function main(command: string | undefined): Promise<number> {
   if (command === "migrate") assertMigrateAllowed(config, process.env);
   const db = openDatabase(database);
   try {
+    await assertDatabaseName(db, database);
     await assertEngineMatches(db, database); // MySQL 8 and MariaDB have separate migration folders: never run one on the other
     if (command === "migrate") {
       const { applied } = await migrate(db, migrations);

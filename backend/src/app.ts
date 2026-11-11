@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import type { Config } from "./config.ts";
+import { adminRouter } from "./admin/routes.ts";
 import { authDeps, type AuthDeps } from "./auth/staff.ts";
 import { staffRouter } from "./auth/routes.ts";
 import type { DatabaseAdapter } from "./db/adapter.ts";
@@ -62,6 +63,7 @@ export function createApp(deps: AppDeps): Express {
   if (deps.db) {
     const auth = authDeps(deps.db, config.auth, deps.now);
     app.use("/api/v1/staff", staffRouter(auth));
+    app.use("/api/v1/admin", adminRouter(auth));
     app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now)));
     deps.mount?.(app, auth);
   }

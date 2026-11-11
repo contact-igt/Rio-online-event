@@ -312,7 +312,9 @@ Nothing was invented or recreated. Logo and illustrations are **not** to be redr
 | M5, M6 | **Built and tested OFFLINE (§28.4, §28.5):** admin and judge areas, private playback via 5-minute links (`RIO_PLAYBACK_ENABLED=no`), scoring, ranking with flagged ties, winner confirmation; 606 unit/database tests (PG17 and PG18), 131 browser tests, build pass; the whole journey passes on real migrations with a fake bucket. **Never run against real Supabase Auth or R2; not production-ready** | See §28, `DEPLOYMENT.md` |
 | M7 | **Public winners page `/results` built and tested offline (§33); release checklist in `DEPLOYMENT.md`; go/no-go 4 of 17 met; NOT READY.** Publication screen, staff screens, certificates not built | See §33 |
 | Staff login | **Built and tested offline (§34): `/staff/login`, role redirects, sign-out, DEV provisioning script; not run against DEV (no staff account yet)** | See §34 |
+| M5B dynamic question builder (2026-11-10) | **Done locally, SQLite only; MariaDB/MySQL run BLOCKED.** Admin-only API and screens to create, edit, reorder, preview and publish versioned question sets per competition (seven types). One append-only migration 0012 (`active`, `min_choices`, `max_choices`), NOT applied to `rio_hospital`. Nothing published, registration closed | See §49 |
 | M8 | Not started (hardening, rate limiting B1, accessibility audit) | — |
+| M5A admin dashboard and event settings (2026-11-10) | **Done locally.** `GET /api/v1/admin/dashboard`, `GET` and `PATCH /api/v1/admin/settings` (Administrator only, audited); `/admin` shows real counts, `/admin/settings` edits the window. Registration stays closed (the API refuses a window that is open at save time). 30 new backend tests (SQLite only; MariaDB/MySQL run not done) | See §48 |
 | Express migration M1 (2026-11-10) | **Backend foundation built and tested locally:** `backend/` (Express 5, TypeScript strict, zod-validated environment, `GET /api/v1/health`, request ids, security headers, body limit, redacting JSON logger, graceful shutdown, database adapter *interfaces* only). No database connection, tables, migrations, Auth or registration; Supabase and both Next apps untouched; nothing committed or deployed. The anonymous-registration, question-builder and `20261110001000` work reported earlier is **not in this repository** (searched all refs, reflog and local folders). | `DEPLOYMENT.md` section 0, `backend/.env.example` |
 | Express migration M2A (2026-11-10) | **Database foundation built and tested locally:** `backend/src/db/` (adapter contract, MySQL pool and SQLite implementations over Kysely, sanitised errors, versioned migrations with SHA-256 checksums, `db:migrate/status/verify/reset:test`, environment guards). Tested on SQLite and on a disposable MySQL 8.0.46 container; CI job with a mandatory MySQL 8 service added but **not yet run on GitHub**. No application tables, no Supabase SQL ported, no Auth, `website/` and `admin/` untouched, nothing committed or deployed. | `DEPLOYMENT.md` section 0, `backend/.env.example`, `backend/migrations/README.md` |
 | Express migration M2B (2026-11-10) | **Application schema built and tested locally, schema only:** ten paired MySQL and SQLite migrations (`backend/migrations/*/0001` to `0010`, 18 tables and the `published_winners` view), typed Kysely rows (`src/db/schema.ts`), `checkReadiness()` (`src/db/readiness.ts`, no route). Invariants enforced by constraints and triggers and proven on MySQL 8.0.46 and SQLite (447 backend tests with MySQL, 295 on SQLite alone). No Auth, no API route, no seed data, no Supabase code or data touched, `website/` and `admin/` untouched, nothing applied to any hosted database, nothing committed or deployed. Open business rules R1 to R13 and the transaction-level rules for M4/M5 are listed in `backend/migrations/README.md`. | §41, `backend/migrations/README.md` |
@@ -2092,3 +2094,45 @@ See the report of this session: neither Next app calls the Express API yet (no r
 ### 47.2 Not done / follow-ups
 - Legacy Supabase modules in admin/ are now unreachable from any page but still present (lib/supabase, lib/judging, lib/staff/{invites,provisioning}, `components/admin/*` forms, e2e fixtures and specs that fake Supabase). Remove when M5a replaces them; the e2e specs for the old flow need rewriting.
 - M5a (administrator API: settings, registrations, judges) is the next module. Per-address rate limits see the Next server's address unless the API runs with `TRUST_PROXY_HOPS=1`.
+
+## 48. M5A administrator dashboard and event settings (2026-11-10), local only
+
+### 48.1 What was built
+- `backend/src/admin/` (`dashboard.ts`, `settings.ts`, `routes.ts`, `admin.test.ts`), mounted at `/api/v1/admin` in `app.ts`. Every route uses `requireStaff(..., { roles: ["admin"] })`: Origin, session (role read from the database), and CSRF on PATCH. Anonymous gets 401, a judge 403.
+- `GET /dashboard`: competitions (total, active), submissions by status (draft, held, finalized, withdrawn, rejected) and total, active judges, registration state and window, ten most recent entries (entry code, competition, status, time; no child, guardian or contact data). Empty tables are zeros.
+- `GET /settings`, `PATCH /settings`: opensAt, closesAt, resultsPublishAt (ISO-8601 with offset, stored UTC, shown in Asia/Kolkata), guardianConsentVersion (label only, `[A-Za-z0-9._-]{1,40}`). Strict zod body: any other field (`registrationOpen`, `registrationEnabled`, a role) is a 400. One transaction per change, one `settings.update` audit row (changed field names, instants, consent label; nothing typed as free text). A request that changes nothing writes nothing.
+- admin/: `lib/admin/api.ts`, `components/admin/dashboard-panel.tsx`, `components/admin/settings-form.tsx`, `app/admin/settings/{page,actions}.tsx`, `lib/event-settings/settings.ts` (IST conversion; outside `lib/admin/` because client components may not import that folder). `callApi` accepts PATCH. The nav "Event Settings" opens `/admin/settings`.
+
+### 48.2 Decisions
+- The schema has no "registration enabled" column. Open means: window set, consent version set, now inside the window. "Disabled" is "no window". No migration was added.
+- M5A guard: a change that would leave registration open at the moment of saving is refused (422 `registration_not_openable_yet`), so this milestone cannot open registration. Relax it in the module that opens registration.
+- Validation: window needs both ends, close after open, consent version required with a window, results at or after close and in the future, already-published results never moved (409).
+- Consent wording is not invented or checked here: only the version label is stored. Whether a label has approved wording is not verified by the API (the public registration code does not check it either).
+
+### 48.3 Evidence
+Backend: lint, typecheck, build pass; 24 files, 779 tests pass, 2 skipped (MySQL-only). admin: lint 0 errors (10 existing warnings), typecheck, 290 tests, build pass. Browser run on a disposable SQLite database with its own administrator (not rio_hospital): scrollWidth equals innerWidth at 360, 768 and 1440 after one overflow fix; a past window and close-before-open show field errors and keep the typed values; a future window saves and survives reload; registration stays closed.
+
+### 48.4 Follow-ups
+- Run `npm run test:mariadb` / MySQL 8 for the new tests (SQLite only so far).
+- The settings screen was not saved against `rio_hospital`: no event dates were created there.
+- Tamil strings for the new screens are provisional (D13). Legacy Supabase modules in admin/ still present (see §47.2).
+
+## 49. M5B dynamic question builder (2026-11-10), local only
+
+### 49.1 Built
+- Migration 0012 (mariadb, mysql, sqlite; append-only): questions.active, min_choices, max_choices. The first schema had no column for them. Existing rows become active with no limits. **Not applied to rio_hospital**: run `npm run db:migrate` in backend/ when approved; until then the new routes fail on that database.
+- backend/src/admin/questions.ts and routes.ts. All routes are Administrator only (session, role from the database, CSRF on every change); anonymous 401, judge 403.
+  GET /admin/competitions; GET and POST /admin/competitions/:slug/question-sets; GET and DELETE .../:setId; GET .../:setId/preview; POST .../:setId/questions; PATCH and DELETE .../:setId/questions/:questionId; PUT .../:setId/order; POST .../:setId/publish.
+- Options (Tamil and English label, order, selection limits) are edited through the question's own PATCH, so a question is always saved whole.
+- admin/: /admin/events/[slug] (competition) and /admin/events/[slug]/questions (list, add and edit form, option editor, reorder, preview, publish confirmation); nav item Questions.
+
+### 49.2 Versioning rules
+One draft at a time; a revision starts as a copy of the published set with the same question keys and option codes. Published and retired sets are immutable (API refuses with 409 and the existing triggers refuse SQL). Publishing is one transaction: retire the current published set, publish the draft, audit; a second simultaneous publish gets 409. Entries keep the set they were created with; answers are never touched. Inactive questions are a draft-only parking state and are deleted at publish. Text: NFC, one line, no angle brackets or control characters. At most 60 questions, 30 options. No conditional branching.
+
+### 49.3 Decisions and gaps
+- The public registration code was not changed. It does not yet enforce min_choices/max_choices and does not know about `active` (inactive questions never reach a published set, so this is safe). Enforcing the limits belongs to the registration module.
+- Publishing is allowed while registration is closed (the only state in this milestone); publishing while it is open would change what parents see mid-window and needs a rule later.
+- Tamil labels in the new screens are provisional (D13).
+
+### 49.4 Evidence
+Backend: lint, typecheck, build, db:verify pass; 25 files, 828 tests pass, 2 skipped (MySQL-only); 49 new question tests. admin: 294 tests, build pass, lint 0 errors. **MariaDB/MySQL integration tests: BLOCKED** (no RIO_TEST_DATABASE_URL, no .env.test.local). Browser smoke test (disposable SQLite, not rio_hospital): full create, edit, reorder, delete, preview, publish, revision and retire flow; no overflow at 360, 768, 1440.

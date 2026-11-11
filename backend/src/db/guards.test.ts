@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.ts";
 import { assertMigrateAllowed, assertResetAllowed, GuardError, requireDatabase, testEnvironment } from "./guards.ts";
 
-const mysqlEnv = (over: Record<string, string> = {}) => ({
-  DB_DIALECT: "mysql",
-  DATABASE_URL: "mysql://u:p@db.internal:3306/rio",
-  DB_ALLOWED_HOST: "db.internal",
-  ALLOWED_ORIGINS: "https://admin.example.org", // required by the config in production once a database is configured
-  ...over,
-});
+const mysqlEnv = (over: Record<string, string> = {}) => {
+  const production = over.NODE_ENV === "production";
+  return {
+    DB_DIALECT: "mysql",
+    DATABASE_URL: production ? "mysql://u:p@db.internal:3306/rio" : "mysql://u:p@127.0.0.1:3306/rio",
+    DB_ALLOWED_HOST: production ? "db.internal" : "127.0.0.1",
+    ALLOWED_ORIGINS: "https://admin.example.org", // required by the config in production once a database is configured
+    ...(production ? { APP_ENV: "production", DB_ENGINE: "mysql", DB_ALLOWED_DATABASE: "rio" } : {}),
+    ...over,
+  };
+};
 
 describe("assertMigrateAllowed", () => {
   it("lets development and test migrate without confirmation", () => {
@@ -45,7 +49,7 @@ describe("assertResetAllowed", () => {
 describe("testEnvironment", () => {
   it("reads only RIO_TEST_* names, never DATABASE_URL", () => {
     const env = testEnvironment({ DATABASE_URL: "mysql://prod:secret@prod.example/rio", DB_DIALECT: "mysql" });
-    expect(env).toEqual({ NODE_ENV: "test", DB_DIALECT: "sqlite", SQLITE_PATH: ":memory:" });
+    expect(env).toEqual({ NODE_ENV: "test", APP_ENV: "test", DB_DIALECT: "sqlite", SQLITE_PATH: ":memory:" });
     expect(JSON.stringify(env)).not.toContain("prod");
   });
 

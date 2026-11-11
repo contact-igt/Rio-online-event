@@ -1,107 +1,137 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { registerPath, signInPath } from "@/lib/auth/paths";
-import { createLimiter } from "@/lib/auth/rate-limit";
-import { parseEventSlug } from "@/lib/auth/schemas";
+import { registerPath } from "@/lib/auth/paths";
 import { getEvent } from "@/lib/events";
-import { getConsentCopy } from "@/lib/registration/consent";
-import { listOwnRegistrations, MAX_REGISTRATIONS_PER_PARENT } from "@/lib/registration/drafts";
-import { findConflicts } from "@/lib/registration/duplicates";
-import { registrationWriteError } from "@/lib/registration/errors";
+import { currentRegistration, createRegistration, publicSettings, recoverRegistration, updateRegistration, type PublicQuestion } from "@/lib/registration/express";
 import { reg, type Msg } from "@/lib/registration/messages";
-import { draftIdSchema, parseRegistration, pickFields, type FieldErrors } from "@/lib/registration/schemas";
-import { isRegistrationOpen, loadSettings } from "@/lib/registration/settings";
-import { createClient } from "@/lib/supabase/server";
+import { parseEventSlug } from "@/lib/auth/schemas";
+import { normalizeMobile } from "@/lib/registration/schemas";
 
-// Saves a registration DRAFT through the signed-in parent's own Supabase session, so row level security decides
-// what is allowed. The owner is never read from the form: the database fills it from the session (auth.uid()).
-// The verified email comes from the session, not the form. Nothing here logs or returns submitted personal data
-// beyond echoing the parent's own input back into their own form.
+export type SaveState = { error?: Msg; fieldErrors?: Partial<Record<string, Msg>>; duplicateId?: string; values?: Record<string, string>; recoveryCode?: string } | undefined;
 
-export type SaveState = { error?: Msg; fieldErrors?: FieldErrors; duplicateId?: string; values?: Record<string, string> } | undefined;
+const noticeCookie = "rio_recovery_notice";
 
-const saveByUser = createLimiter(20, 10 * 60_000);
+const problemMessage = (field: string, problem: string): Msg => {
+  if (field === "childName" || field === "guardianName") return reg.errors.name;
+  if (field === "childAge") return reg.errors.age;
+  if (field === "guardianMobile") return reg.errors.mobile;
+  if (field === "guardianConsent") return reg.errors.consent;
+  if (problem === "registration_closed") return reg.errors.closed;
+  if (problem === "consent_version_changed") return reg.errors.consentChanged;
+  if (problem === "invalid_mobile") return reg.errors.mobile;
+  return reg.errors.fix;
+};
+
+function rawValues(formData: FormData): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const key of ["childName", "childAge", "guardianName", "guardianMobile", "guardianEmail"]) {
+    const value = formData.get(key);
+    if (typeof value === "string") values[key] = value;
+  }
+  return values;
+}
+
+function answersFrom(formData: FormData): Record<string, string | number | string[] | null> {
+  const answers: Record<string, string | number | string[] | null> = {};
+  for (const [key] of formData.entries()) {
+    if (!key.startsWith("answer_")) continue;
+    const questionKey = key.slice("answer_".length);
+    if (!/^[a-z][a-z0-9_]{0,39}$/.test(questionKey)) continue;
+    const type = formData.get(`questionType_${questionKey}`);
+    const all = formData.getAll(key).filter((item): item is string => typeof item === "string");
+    if (type === "checkboxes") answers[questionKey] = all;
+    else if (type === "number") answers[questionKey] = all[0]?.trim() === "" ? null : Number(all[0]);
+    else answers[questionKey] = all[0] ?? null;
+  }
+  return answers;
+}
+
+function consentBody(formData: FormData, settings: Awaited<ReturnType<typeof publicSettings>>) {
+  const guardianVersion = settings?.guardianConsentVersion;
+  if (!guardianVersion) return null;
+  const mediaVersion = settings?.mediaConsentVersion;
+  const mediaValue = formData.get("mediaConsent") === "on";
+  return {
+    guardianConsent: { accepted: formData.get("guardianConsent") === "on", version: guardianVersion },
+    mediaConsent: mediaVersion ? { granted: mediaValue, version: mediaVersion } : null,
+  };
+}
 
 export async function saveDraft(_prev: SaveState, formData: FormData): Promise<SaveState> {
-  const raw = pickFields(formData);
-  const slug = parseEventSlug(raw.event);
+  const raw = rawValues(formData);
+  const slug = parseEventSlug(String(formData.get("event") ?? ""));
   const event = slug ? getEvent(slug) : undefined;
-  if (!event) return { error: reg.errors.notFound };
-
-  let supabase: Awaited<ReturnType<typeof createClient>>;
+  if (!event) return { error: reg.errors.notFound, values: raw };
+  const settings = await publicSettings();
+  if (!settings) return { error: reg.errors.unavailable, values: raw };
+  if (!settings.registrationOpen) return { error: reg.errors.closed, values: raw };
+  const consent = consentBody(formData, settings);
+  if (!consent) return { error: reg.errors.closed, values: raw };
+  const guardianMobile = normalizeMobile(raw.guardianMobile ?? "");
+  if (!guardianMobile) return { error: reg.errors.mobile, values: raw };
+  const draftId = String(formData.get("draftId") ?? "");
+  const answers = answersFrom(formData);
+  const body = {
+    childName: raw.childName ?? "",
+    childAge: Number(raw.childAge),
+    guardianName: raw.guardianName ?? "",
+    guardianMobile,
+    guardianEmail: raw.guardianEmail?.trim() ? raw.guardianEmail.trim() : null,
+    ...consent,
+    ...(Object.keys(answers).length > 0 ? { answers } : {}),
+    eventSlug: event.slug,
+  };
+  if (draftId) {
+    const current = await currentRegistration();
+    if (!current || current.view.status !== "draft") return { error: reg.errors.notFound, values: raw };
+    const patch = {
+      childName: body.childName,
+      childAge: body.childAge,
+      guardianName: body.guardianName,
+      guardianMobile: body.guardianMobile,
+      guardianEmail: body.guardianEmail,
+      mediaConsent: body.mediaConsent,
+      answers: body.answers,
+      guardianConsent: formData.get("guardianConsent") === "on" ? consent.guardianConsent : undefined,
+    };
+    let result;
+    try {
+      result = await updateRegistration(patch, current.csrfToken);
+    } catch {
+      return { error: reg.errors.unavailable, values: raw };
+    }
+    if (result.status !== 200) return { error: problemMessage("form", result.fields?.[0]?.problem ?? "save_failed"), values: raw };
+    redirect(`${registerPath(event.slug)}?saved=1`);
+  }
+  let result;
   try {
-    supabase = await createClient();
+    result = await createRegistration(body);
   } catch {
     return { error: reg.errors.unavailable, values: raw };
   }
+  if (result.status !== 201 || !result.body) return { error: problemMessage("form", result.fields?.[0]?.problem ?? "save_failed"), values: raw };
+  const jar = await cookies();
+  jar.set(noticeCookie, result.body.recoveryCode, { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 300 });
+  redirect(`${registerPath(event.slug)}?saved=1`);
+}
 
-  // an expired or revoked session must not fail silently: send the parent back to sign in
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
-  if (!user?.email) redirect(signInPath(event.slug, true));
-
-  if (!saveByUser.hit(user.id).allowed) return { error: reg.errors.tooMany, values: raw };
-
-  const settings = await loadSettings(supabase);
-  if (!isRegistrationOpen(settings) || !settings) return { error: reg.errors.closed, values: raw };
-  const consent = getConsentCopy(settings.consentVersion);
-  if (!consent) return { error: reg.errors.closed, values: raw };
-
-  const parsedId = raw.draftId ? draftIdSchema.safeParse(raw.draftId) : null;
-  if (parsedId && !parsedId.success) return { error: reg.errors.notFound, values: raw };
-  const editing = parsedId?.success ? parsedId.data : null;
-
-  // the parent must have agreed to the wording that is current NOW (it may have changed while the form was open)
-  if (!editing && raw.consentVersion !== consent.version) {
-    revalidatePath(registerPath(event.slug));
-    return { error: reg.errors.consentChanged, values: { ...raw, guardianConsent: "", mediaConsent: raw.mediaConsent ?? "" } };
+export async function recoverDraft(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  const slug = parseEventSlug(String(formData.get("event") ?? ""));
+  if (!slug) return { error: reg.errors.notFound };
+  const code = String(formData.get("recoveryCode") ?? "").trim();
+  if (!code) return { error: reg.errors.notFound };
+  let result;
+  try {
+    result = await recoverRegistration(code);
+  } catch {
+    return { error: reg.errors.unavailable };
   }
+  if (result.status !== 200) return { error: reg.errors.notFound };
+  redirect(registerPath(slug));
+}
 
-  const parsed = parseRegistration(event, raw, !editing);
-  if (!parsed.ok) return { error: reg.errors.fix, fieldErrors: parsed.errors, values: raw };
-  const { data } = parsed;
-
-  const own = await listOwnRegistrations(supabase);
-  if (!own) return { error: reg.errors.saveFailed, values: raw };
-
-  const conflicts = findConflicts(own, { eventId: event.number, childName: data.childName, mobile: data.mobile }, editing ?? undefined);
-  if (conflicts.finalizedElsewhere) return { error: reg.errors.submittedElsewhere, values: raw };
-  if (conflicts.sameEvent) return { error: reg.errors.duplicate, duplicateId: conflicts.sameEvent.id, values: raw };
-
-  let id: string;
-  if (editing) {
-    const existing = own.find((r) => r.id === editing && r.event_id === event.number);
-    if (!existing) return { error: reg.errors.notFound, values: raw };
-    if (existing.status !== "draft") return { error: reg.errors.locked, values: raw };
-    const { data: rows, error } = await supabase
-      .from("submissions")
-      .update({ child_name: data.childName, child_age: data.childAge, parent_name: data.parentName, parent_mobile: data.mobile, media_consent: data.mediaConsent })
-      .eq("id", editing)
-      .select("id");
-    if (error) return { ...registrationWriteError(error, event), values: raw };
-    if (!rows || rows.length === 0) return { error: reg.errors.notFound, values: raw }; // not the parent's row (RLS)
-    id = editing;
-  } else {
-    if (own.filter((r) => r.status !== "withdrawn").length >= MAX_REGISTRATIONS_PER_PARENT) return { error: reg.errors.limit, values: raw };
-    const { data: row, error } = await supabase
-      .from("submissions")
-      .insert({
-        event_id: event.number,
-        child_name: data.childName,
-        child_age: data.childAge,
-        parent_name: data.parentName,
-        parent_email: user.email.toLowerCase(), // the verified email from the session, never from the form
-        parent_mobile: data.mobile,
-        consent_version: consent.version,
-        media_consent: data.mediaConsent,
-      })
-      .select("id")
-      .single();
-    if (error || !row) return { ...registrationWriteError(error ?? {}, event), values: raw };
-    id = row.id;
-  }
-
-  redirect(`${registerPath(event.slug)}?draft=${id}&saved=1`);
+export function questionInputName(question: PublicQuestion): string {
+  return `answer_${question.key}`;
 }

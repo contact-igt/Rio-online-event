@@ -32,7 +32,7 @@ describe("db:status and db:ready on a database nobody has touched", () => {
   it("db:status reports every migration as pending and writes nothing: not even the tracking table", () => {
     const r = run("status");
     expect(r.code).toBe(0);
-    expect(r.out.split("\n")).toHaveLength(11);
+    expect(r.out.split("\n")).toHaveLength(12);
     expect(r.out.split("\n").every((line) => line.endsWith("pending"))).toBe(true);
     expect(tables()).toEqual([]);
   });
@@ -49,7 +49,7 @@ describe("after db:migrate", () => {
   it("applies every migration and db:status and db:ready agree", () => {
     const m = run("migrate");
     expect(m.code).toBe(0);
-    expect(m.out).toBe("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011");
+    expect(m.out).toBe("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012");
     expect(run("status").out.split("\n").every((line) => line.endsWith("applied"))).toBe(true);
     const ready = run("ready");
     expect(ready.code).toBe(0);
@@ -65,13 +65,13 @@ describe("after db:migrate", () => {
 
   it("db:ready says pending when a migration file is newer than the database, without applying it", () => {
     const db = new DatabaseSync(sqlitePath);
-    db.exec("DELETE FROM rio_migrations WHERE version = '0011'");
+    db.exec("DELETE FROM rio_migrations WHERE version = '0012'");
     db.close();
     const r = run("ready");
     expect(r.code).toBe(1);
     expect(r.out).toBe("not ready: migrations_pending");
     const db2 = new DatabaseSync(sqlitePath, { readOnly: true });
-    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(10); // still not applied
+    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(11); // still not applied
     db2.close();
   });
 });

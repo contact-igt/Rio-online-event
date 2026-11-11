@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bilingual } from "@/components/auth/bilingual";
 import { Icon, eventIcon } from "@/components/ui/icon";
+import { DashboardPanel } from "@/components/admin/dashboard-panel";
+import { loadDashboard } from "@/lib/admin/api";
 import { events } from "@/lib/events";
 import { requireStaff } from "@/lib/staff/auth";
 import { staff } from "@/lib/staff/messages";
@@ -9,10 +11,10 @@ import { staff } from "@/lib/staff/messages";
 export const metadata: Metadata = { title: "நிர்வாகம் · Admin", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-// The Express API has no endpoints yet for registrations, judges, scores or event settings, so this page shows none of them: no counts, no
-// dates, nothing invented. It shows who is signed in (from the API) and the six fixed competitions.
+// The figures come from GET /admin/dashboard (MariaDB through the Express API). If the API is unreachable the panel says so; nothing is invented.
 export default async function AdminPage() {
   const { user } = await requireStaff("admin");
+  const dashboard = await loadDashboard();
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-[clamp(1.5rem,5vw,3rem)] sm:px-6 lg:px-8">
@@ -51,19 +53,7 @@ export default async function AdminPage() {
             </dl>
           </div>
 
-          <div className="card p-4 sm:p-6">
-            <h2 className="flex items-center gap-3 font-display text-2xl font-bold text-rio-navy">
-              <Icon name="calendar" className="h-7 w-7 text-rio-rose" />
-              Registrations, judges and scores <span lang="ta" className="font-medium">/ பதிவுகள்</span>
-            </h2>
-            <p role="status" className="mt-3 flex items-start gap-3 rounded-2xl bg-rio-mist p-3">
-              <Icon name="info" className="mt-0.5 h-5 w-5 shrink-0" />
-              <span>
-                Not available yet. The counts, event settings, judges and scoring progress will appear here when the new server provides them. Registration is closed.
-                <span lang="ta" className="mt-1 block text-sm">இந்தத் தரவு இன்னும் தயாராகவில்லை. பதிவு மூடப்பட்டுள்ளது.</span>
-              </span>
-            </p>
-          </div>
+          <DashboardPanel loaded={dashboard} />
 
           <div id="competitions" className="card scroll-mt-4 p-4 sm:p-6">
             <h2 className="flex items-center gap-3 font-display text-2xl font-bold text-rio-navy">
@@ -96,7 +86,7 @@ export default async function AdminPage() {
             </span>
           </h2>
           <ul className="mt-3">
-            {[{ href: "/admin/registrations", label: "Registrations" }, { href: "/admin/judges", label: "Judges" }].map((l) => (
+            {[{ href: "/admin/registrations", label: "Registrations" }, { href: "/admin/judges", label: "Judges" }, { href: "/admin/settings", label: "Event settings" }].map((l) => (
               <li key={l.href} className="border-t border-rio-navy/10 first:border-0">
                 <Link href={l.href} className="flex min-h-11 items-center justify-between gap-2 font-semibold text-rio-navy hover:text-rio-rose">
                   <span>{l.label}</span>

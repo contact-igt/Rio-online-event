@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/auth/submit-button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { reg, type Msg } from "@/lib/registration/messages";
 import type { Field } from "@/lib/registration/schemas";
+import type { PublicQuestion } from "@/lib/registration/express";
 
 export type FormDraft = {
   id: string;
@@ -15,11 +16,14 @@ export type FormDraft = {
   parentName: string;
   mobileLocal: string; // the 10 digits, without +91
   mediaConsent: boolean;
+  email?: string;
+  answers?: Record<string, string | number | string[] | null>;
 };
 
 type Props = {
   event: { slug: string; minAge: number; maxAge: number };
-  email: string;
+  email?: string;
+  questions?: PublicQuestion[];
   consent: { version: string; notice: Msg; guardian: Msg; media: Msg };
   draft: FormDraft | null;
   /** Only the development preview passes these: its own action (which never saves) and a ready-made state to show. The real page never does. */
@@ -41,7 +45,7 @@ function SectionBar({ icon, m, tone = "mist" }: { icon: IconName; m: Msg; tone?:
   );
 }
 
-export function RegistrationForm({ event, email, consent, draft, action: submitAction = saveDraft, initialState }: Props) {
+export function RegistrationForm({ event, questions = [], consent, draft, action: submitAction = saveDraft, initialState }: Props) {
   const [state, action] = useActionState(submitAction, initialState);
   const v = state?.values;
   // React resets a form after every action. A text input's defaultValue follows the values the action returned, but a
@@ -114,15 +118,10 @@ export function RegistrationForm({ event, email, consent, draft, action: submitA
         </div>
 
         <div>
-          <p className="font-semibold text-rio-navy">
-            <Bilingual m={reg.form.email} />
-          </p>
-          <p className="field field-static mt-2 flex items-center gap-2 [overflow-wrap:anywhere]">
-            <Icon name="lock" className="h-5 w-5 text-rio-slate" />
-            {email}
-          </p>
+          <label htmlFor="guardianEmail" className="block font-semibold text-rio-navy"><Bilingual m={reg.form.email} /></label>
+          <input id="guardianEmail" name="guardianEmail" type="email" autoComplete="email" maxLength={254} defaultValue={draft?.email ?? ""} className="field mt-2" />
           <p className="mt-2 text-sm text-rio-slate">
-            <Bilingual m={reg.form.emailHelp} />
+            Optional / விருப்பம்
           </p>
         </div>
 
@@ -143,6 +142,36 @@ export function RegistrationForm({ event, email, consent, draft, action: submitA
           {err("mobile") && <FieldError id="mobile-error" m={err("mobile")!} />}
         </div>
       </div>
+
+      {questions.length > 0 && (
+        <fieldset className="space-y-4">
+          <legend className="w-full"><SectionBar icon="edit" m={{ ta: "கேள்விகள்", en: "Competition questions" }} /></legend>
+          {questions.map((q) => {
+            const value = draft?.answers?.[q.key];
+            const input = `answer_${q.key}`;
+            const checked = (code: string) => Array.isArray(value) && value.includes(code);
+            return (
+              <div key={q.key} className="rounded-xl border border-rio-navy/15 p-4">
+                <input type="hidden" name={`questionType_${q.key}`} value={q.type} />
+                {q.type === "instruction" ? (
+                  <p className="font-semibold text-rio-navy">{q.promptTa}<span lang="en" className="block text-rio-slate">{q.promptEn}</span></p>
+                ) : (
+                  <>
+                    <label htmlFor={input} className="block font-semibold text-rio-navy">
+                      {q.promptTa} <span lang="en" className="text-rio-slate">/ {q.promptEn}</span>{q.required && <span className={tag}>Required / கட்டாயம்</span>}
+                    </label>
+                    {q.helpTa || q.helpEn ? <p className="mt-1 text-sm text-rio-slate">{q.helpTa}<span lang="en" className="block">{q.helpEn}</span></p> : null}
+                    {(q.type === "short_text" || q.type === "paragraph") && <textarea id={input} name={input} defaultValue={typeof value === "string" ? value : ""} maxLength={q.maxLength ?? undefined} rows={q.type === "paragraph" ? 4 : 2} className="field mt-2" />}
+                    {q.type === "number" && <input id={input} name={input} type="number" defaultValue={typeof value === "number" ? value : ""} min={q.minNumber ?? undefined} max={q.maxNumber ?? undefined} className="field mt-2" />}
+                    {q.type === "dropdown" && <select id={input} name={input} defaultValue={typeof value === "string" ? value : ""} className="field mt-2"><option value="">Choose / தேர்ந்தெடுக்கவும்</option>{q.options?.map((o) => <option key={o.code} value={o.code}>{o.ta} / {o.en}</option>)}</select>}
+                    {(q.type === "radio" || q.type === "checkboxes") && <div className="mt-2 space-y-2">{q.options?.map((o) => <label key={o.code} className="flex items-center gap-2"><input type={q.type === "radio" ? "radio" : "checkbox"} name={input} value={o.code} defaultChecked={q.type === "checkboxes" ? checked(o.code) : value === o.code} className={check} />{o.ta} / {o.en}</label>)}</div>}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </fieldset>
+      )}
 
       <fieldset className="space-y-4">
         <legend className="w-full">

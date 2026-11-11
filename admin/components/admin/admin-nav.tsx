@@ -15,15 +15,16 @@ const items: Item[] = [
   { label: "Dashboard", ta: "முகப்பு", icon: "list", href: () => "/admin", active: (p) => p === "/admin" },
   { label: "Registrations", ta: "பதிவுகள்", icon: "clipboard", href: () => "/admin/registrations", active: (p) => p.startsWith("/admin/registrations") },
   { label: "Judges", ta: "நடுவர்கள்", icon: "user", href: () => "/admin/judges", active: (p) => p.startsWith("/admin/judges") },
+  { label: "Questions", ta: "கேள்விகள்", icon: "edit", href: (e) => (e ? `${e}/questions` : "/admin#competitions"), active: (p) => /questions$/.test(p) },
   { label: "Assign Judges", ta: "நடுவரை ஒதுக்கு", icon: "users", href: (e) => (e ? `${e}#assign` : "/admin#competitions") },
   { label: "Scoring", ta: "மதிப்பெண்", icon: "star", href: (e) => (e ? `${e}#ranking` : "/admin#competitions") },
   { label: "Results", ta: "முடிவுகள்", icon: "trophy", href: (e) => (e ? `${e}#winners` : "/admin#competitions") },
-  { label: "Event Settings", ta: "நிகழ்வு அமைப்புகள்", icon: "calendar", href: () => "/admin#event-settings" },
+  { label: "Event Settings", ta: "நிகழ்வு அமைப்புகள்", icon: "calendar", href: () => "/admin/settings", active: (p) => p.startsWith("/admin/settings") },
 ];
 
 export function AdminNav() {
   const path = usePathname() ?? "/admin";
-  const onEvent = path.startsWith("/admin/events/") ? path : null;
+  const onEvent = /^\/admin\/events\/[^/]+/.exec(path)?.[0] ?? null;
   return (
     <nav aria-label="Administration" className="px-4 pt-4 sm:px-6 lg:sticky lg:top-4 lg:self-start lg:px-0 lg:pl-6 lg:pt-8">
       <ul className="flex flex-wrap gap-2 lg:card lg:flex-col lg:gap-1 lg:!rounded-2xl lg:p-2">

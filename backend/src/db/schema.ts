@@ -115,6 +115,10 @@ export interface QuestionsTable {
   max_length: number | null;
   min_number: number | null;
   max_number: number | null;
+  /** M5B (migration 0012): a draft question can be switched off; checkbox selection limits. */
+  active: FlagDefault;
+  min_choices: number | null;
+  max_choices: number | null;
 }
 
 export interface SubmissionsTable {

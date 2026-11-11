@@ -81,6 +81,24 @@ Never set in Vercel: `RIO_DIST_DIR`, `RIO_DEV_PROJECT_REF`, `RIO_CONFIRM_PUSH`, 
 (tooling and tests only). Preview deployments must have no production secrets (point them at DEV or give them none). Check R2 settings without printing
 them: `npm run r2:check`.
 
+### Backend database variables (hosting platform's runtime variables only; placeholders shown)
+
+Production reads these from the platform's environment settings and never from a file. The server and the `db:*` tools refuse to run in production if `backend/.env.local` exists.
+
+```
+NODE_ENV=production
+APP_ENV=production                      # must equal NODE_ENV
+DB_DIALECT=mysql
+DB_ENGINE=mysql                         # explicit; mariadb is refused in production
+DB_ALLOWED_HOST=<private host of the hosted MySQL 8>
+DB_ALLOWED_DATABASE=<approved production database name>
+DATABASE_URL=mysql://<user>:<password>@<same host as DB_ALLOWED_HOST>:3306/<same name as DB_ALLOWED_DATABASE>
+ALLOWED_ORIGINS=https://<admin site>
+PUBLIC_ORIGINS=https://<public site>
+```
+
+Rules enforced at start-up (tested in `backend/src/environment.test.ts`): `APP_ENV` must equal `NODE_ENV`; a loopback host, `mariadb`, `sqlite` and a `*_test` database are refused in production; `DB_ALLOWED_DATABASE` must equal the database in `DATABASE_URL`; the connected server must be MySQL (not MariaDB) and `SELECT DATABASE()` must return the approved name. There is no fallback between environments: a missing value is an error. The build (`npm run build`) needs none of these variables, and the server never migrates on start; a production migration is a separate, explicit `RIO_CONFIRM_MIGRATE=<database name> npm run db:migrate`.
+
 ## 3. Production resources needed
 
 | Resource | Needed | Notes |

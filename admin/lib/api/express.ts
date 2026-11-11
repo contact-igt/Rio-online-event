@@ -24,7 +24,7 @@ export async function sessionCookieHeader(): Promise<string | null> {
   return null;
 }
 
-export async function callApi<T>(path: string, init: { method?: "GET" | "POST"; body?: unknown; cookie?: string | null; csrf?: string } = {}): Promise<ApiReply<T>> {
+export async function callApi<T>(path: string, init: { method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; body?: unknown; cookie?: string | null; csrf?: string } = {}): Promise<ApiReply<T>> {
   const method = init.method ?? "GET";
   const out: Record<string, string> = { accept: "application/json" };
   if (init.cookie) out.cookie = init.cookie;

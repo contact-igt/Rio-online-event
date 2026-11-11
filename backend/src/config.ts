@@ -94,6 +94,9 @@ export function parseMysqlUrl(raw: string): Omit<MysqlConfig, "dialect" | "engin
 const schema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    // Names the environment a second time so that one stray variable can never move the app between environments. Required in production.
+    APP_ENV: z.enum(["development", "test", "production"]).optional(),
+    DB_ALLOWED_DATABASE: z.string().min(1).max(64).optional(),
     HOST: z.string().min(1).max(253).optional(),
     PORT: integer(1, 65535, 4000),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -119,6 +122,8 @@ const schema = z
   .superRefine((env, ctx) => {
     const fail = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
     const production = env.NODE_ENV === "production";
+    if (env.APP_ENV !== undefined && env.APP_ENV !== env.NODE_ENV) fail("APP_ENV", "must equal NODE_ENV");
+    if (production && env.DB_DIALECT !== undefined && env.APP_ENV !== "production") fail("APP_ENV", "must be production when a production database is configured");
     for (const name of ["ALLOWED_ORIGINS", "PUBLIC_ORIGINS"] as const) {
       for (const origin of parseOrigins(env[name]) ?? []) {
         if (origin === null) fail(name, "must be a comma-separated list of origins such as https://www.example.org (no path)");
@@ -151,12 +156,17 @@ const schema = z
     if (env.DB_ALLOWED_HOST === undefined) return fail("DB_ALLOWED_HOST", "is required when DB_DIALECT=mysql");
     // The host in the URL must be the one the operator named, so a stray or copied URL cannot silently point the app elsewhere.
     if (target.host !== env.DB_ALLOWED_HOST.toLowerCase()) fail("DATABASE_URL", "host does not match DB_ALLOWED_HOST");
+    if (production && env.DB_ENGINE !== "mysql") fail("DB_ENGINE", "must be mysql in production (set it explicitly)");
+    if (production && env.DB_ALLOWED_DATABASE === undefined) fail("DB_ALLOWED_DATABASE", "is required in production (the approved database name)");
+    if (env.DB_ALLOWED_DATABASE !== undefined && env.DB_ALLOWED_DATABASE !== target.database) fail("DB_ALLOWED_DATABASE", "does not match the database in DATABASE_URL");
     const loopback = LOOPBACK.has(target.host);
     const testName = target.database.endsWith("_test");
     if (env.NODE_ENV === "test") {
+      if (target.database === "rio_hospital") fail("DATABASE_URL", "rio_hospital is the development database and is never a test target");
       if (!loopback) fail("DATABASE_URL", "must point at a local database when NODE_ENV=test");
       if (!testName) fail("DATABASE_URL", "database name must end with _test when NODE_ENV=test");
     } else {
+      if (env.NODE_ENV === "development" && !loopback) fail("DATABASE_URL", "must point at a local database when NODE_ENV=development");
       if (testName) fail("DATABASE_URL", "a database whose name ends with _test is only allowed when NODE_ENV=test");
       if (env.NODE_ENV === "production" && loopback) fail("DATABASE_URL", "must not be a local database in production");
     }
