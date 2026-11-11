@@ -149,13 +149,16 @@ export const NOTICE: Record<string, { en: string; ta: string }> = {
   saved: { en: "Question saved.", ta: "கேள்வி சேமிக்கப்பட்டது." },
   deleted: { en: "Question deleted.", ta: "கேள்வி நீக்கப்பட்டது." },
   moved: { en: "Order changed.", ta: "வரிசை மாற்றப்பட்டது." },
-  published: { en: "Published. Registration is still closed.", ta: "வெளியிடப்பட்டது. பதிவு இன்னும் மூடியே உள்ளது." },
+  published: { en: "Published to all competitions. Registration is still closed.", ta: "எல்லாப் போட்டிகளுக்கும் வெளியிடப்பட்டது. பதிவு இன்னும் மூடியே உள்ளது." },
 };
+
+/** The one Questions page: every competition shares the same list. */
+export const QUESTIONS_PATH = "/admin/questions";
 export const ERROR: Record<string, { en: string; ta: string }> = {
   unavailable: { en: "The server is not reachable. Nothing was changed.", ta: "சேவையகத்தை அணுக முடியவில்லை. எதுவும் மாற்றப்படவில்லை." },
   forbidden: { en: "Your session cannot do this. Sign in again.", ta: "உங்கள் அமர்வால் இதைச் செய்ய முடியாது. மீண்டும் உள்நுழையுங்கள்." },
   not_a_draft: { en: "Only a draft can be changed. Create a draft revision first.", ta: "வரைவை மட்டுமே மாற்ற முடியும்." },
-  draft_exists: { en: "A draft already exists for this competition.", ta: "இந்தப் போட்டிக்கு ஏற்கெனவே ஒரு வரைவு உள்ளது." },
+  draft_exists: { en: "A draft already exists.", ta: "ஏற்கெனவே ஒரு வரைவு உள்ளது." },
   not_publishable: { en: "The draft cannot be published yet. See the list of problems.", ta: "வரைவை இன்னும் வெளியிட முடியாது." },
   rule_violation: { en: "The change is not allowed by the question rules.", ta: "மாற்றம் விதிகளுக்கு உட்பட்டதல்ல." },
   invalid_order: { en: "The order could not be changed. Reload and try again.", ta: "வரிசையை மாற்ற முடியவில்லை. மீண்டும் ஏற்றவும்." },

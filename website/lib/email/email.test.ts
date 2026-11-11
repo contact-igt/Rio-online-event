@@ -62,8 +62,11 @@ describe("the template", () => {
     expect(mail.text).toMatch(/final and cannot be changed/);
     expect(mail.text).not.toMatch(/winner of|you won|certificate (is|has been) (attached|ready)/i);
   });
-  it("renders every one of the six competitions", () => {
-    for (let id = 1; id <= 6; id++) expect(renderParticipationEmail({ eventId: id, reference: REF }).html).toContain(REF);
+  it("renders every one of the competitions", () => {
+    for (let id = 1; id <= 4; id++) expect(renderParticipationEmail({ eventId: id, reference: REF }).html).toContain(REF);
+  });
+  it("refuses the withdrawn competitions 5 and 6", () => {
+    for (const id of [5, 6]) expect(() => renderParticipationEmail({ eventId: id, reference: REF })).toThrow();
   });
   it("refuses an unknown competition and any reference that is not an exact entry code, so nothing can be injected", () => {
     expect(() => renderParticipationEmail({ eventId: 0, reference: REF })).toThrow();

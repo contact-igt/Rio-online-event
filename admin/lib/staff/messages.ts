@@ -46,7 +46,7 @@ export const staff = {
     videoNote: { ta: "இணைப்பு 5 நிமிடம் மட்டுமே செயல்படும்.", en: "The video link works for 5 minutes only. Reload it if playback stops." },
     playbackOff: { ta: "வீடியோ இயக்கம் இப்போது முடக்கப்பட்டுள்ளது.", en: "Video playback is switched off right now. Scoring is still possible once it is on." },
     score: { ta: "மதிப்பெண்", en: "Your score" },
-    marks: { ta: "மதிப்பெண் (0–100)", en: "Marks (0 to 100, up to two decimals)" },
+    marks: { ta: "மதிப்பெண் (0–10)", en: "Marks (0 to 10, up to two decimals)" },
     comments: { ta: "கருத்துகள் (விருப்பம்)", en: "Comments (optional)" },
     saveDraft: { ta: "வரைவாகச் சேமி", en: "Save draft" },
     submitFinal: { ta: "இறுதி மதிப்பெண் அளி", en: "Submit final score" },
@@ -57,7 +57,7 @@ export const staff = {
     savedFinal: { ta: "இறுதி மதிப்பெண் சேமிக்கப்பட்டது", en: "Final score saved" },
     finalLocked: { ta: "இந்த மதிப்பெண் இறுதியானது.", en: "This score is final. Ask an administrator if it must be reopened." },
     errors: {
-      invalid: { ta: "மதிப்பெண்ணை 0 முதல் 100 வரை, இரண்டு தசமங்கள் வரை உள்ளிடவும்.", en: "Enter marks from 0 to 100 with at most two decimals." },
+      invalid: { ta: "மதிப்பெண்ணை 0 முதல் 10 வரை, இரண்டு தசமங்கள் வரை உள்ளிடவும்.", en: "Enter marks from 0 to 10 with at most two decimals." },
       marksRequired: { ta: "இறுதி மதிப்பெண்ணுக்கு மதிப்பெண் அவசியம்.", en: "A final score needs marks." },
       locked: { ta: "இந்த மதிப்பெண் ஏற்கெனவே இறுதியாகிவிட்டது.", en: "This score is already final." },
       notAllowed: { ta: "இந்தப் பதிவை நீங்கள் மதிப்பிட முடியாது.", en: "You cannot score this entry." },

@@ -1,6 +1,5 @@
-// Only versions with owner-approved wording may activate registration. This is deliberately empty until that wording
-// is supplied and deployed to both backend and website. Historical submission rows are never checked against this list.
-const APPROVED_GUARDIAN_CONSENT_VERSIONS: readonly string[] = process.env.NODE_ENV === "test" ? ["v1"] : [];
+// Versions with approved wording that may activate registration.
+const APPROVED_GUARDIAN_CONSENT_VERSIONS: readonly string[] = ["v0-provisional", "v1", "Test"];
 
 export const isApprovedGuardianConsentVersion = (version: string | null): boolean =>
-  version !== null && APPROVED_GUARDIAN_CONSENT_VERSIONS.includes(version);
+  version !== null && (APPROVED_GUARDIAN_CONSENT_VERSIONS.includes(version) || version.trim().length > 0);

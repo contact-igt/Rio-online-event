@@ -5,7 +5,7 @@ import { useActionState, useState } from "react";
 import { saveQuestionAction } from "@/app/admin/events/[slug]/questions/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { Icon } from "@/components/ui/icon";
-import { ERROR, fieldMessage, hasOptions, moved, TYPE_LABEL, type FormModel, type OptionDraft } from "@/lib/question-builder/types";
+import { ERROR, fieldMessage, hasOptions, moved, QUESTIONS_PATH, TYPE_LABEL, type FormModel, type OptionDraft } from "@/lib/question-builder/types";
 
 // Add or edit one draft question. Controlled inputs, so a rejected save keeps what was typed. The API validates everything; this form only
 // shows its field codes in words, next to the field, in text (not colour alone).
@@ -157,7 +157,7 @@ export function QuestionForm({ slug, setId, questionId, initial }: Props) {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <SubmitButton idle={{ en: "Save question", ta: "கேள்வியைச் சேமி" }} busy={{ en: "Saving…", ta: "சேமிக்கிறது…" }} />
-        <Link href={`/admin/events/${slug}/questions`} className="btn btn-outline w-full sm:w-auto">
+        <Link href={QUESTIONS_PATH} className="btn btn-outline w-full sm:w-auto">
           Cancel / ரத்து
         </Link>
       </div>

@@ -16,7 +16,7 @@ function Status({ s, marks }: { s: JudgeRow["score_status"]; marks: JudgeRow["my
       <Icon name={s === "final" ? "check" : "info"} className="h-5 w-5" />
       <span>
         {m.en} <span lang="ta" className="font-medium">/ {m.ta}</span>
-        {marks !== null && s !== null && <span lang="en" className="block font-semibold tabular-nums text-rio-slate">{marks} / 100</span>}
+        {marks !== null && s !== null && <span lang="en" className="block font-semibold tabular-nums text-rio-slate">{marks} / 10</span>}
       </span>
     </span>
   );

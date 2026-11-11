@@ -154,7 +154,7 @@ describe("requestCode", () => {
 
 describe("resendCode", () => {
   it("returns to sign-in when there is no pending email", async () => {
-    expect((await run(() => actions.resendCode(undefined, form({ event: "tamilil-sollu" })))).redirect).toBe("/signin?event=tamilil-sollu");
+    expect((await run(() => actions.resendCode(undefined, form({ event: "kutti-pesalar" })))).redirect).toBe("/signin?event=kutti-pesalar");
     expect(h.auth.signInWithOtp).not.toHaveBeenCalled();
   });
 

@@ -46,6 +46,4 @@ export const eventIcon: Record<string, IconName> = {
   "kathai-sollum-kutties": "book",
   "thirukkural-thiramai": "scroll",
   "kutti-pesalar": "mic",
-  "tamil-kalaikoodam": "palette",
-  "tamilil-sollu": "chat",
 };

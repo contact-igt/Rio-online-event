@@ -20,13 +20,13 @@ describe("the approved list", () => {
     const web = [...source.matchAll(/number:\s*(\d+),\s*slug:\s*"([^"]+)",\s*nameTa:\s*"([^"]+)",\s*nameEn:\s*"([^"]+)",\s*minAge:\s*(\d+),\s*maxAge:\s*(\d+)/g)].map((m) => ({
       number: Number(m[1]), slug: m[2], nameTa: m[3], nameEn: m[4], minAge: Number(m[5]), maxAge: Number(m[6]),
     }));
-    expect(web).toHaveLength(6);
+    expect(web).toHaveLength(4);
     expect(COMPETITIONS).toEqual(web);
   });
 
-  it("has six competitions with unique slugs that satisfy the database's slug rule, and sensible age ranges", () => {
-    expect(COMPETITIONS.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(new Set(COMPETITIONS.map((c) => c.slug)).size).toBe(6);
+  it("has four competitions with unique slugs that satisfy the database's slug rule, and sensible age ranges", () => {
+    expect(COMPETITIONS.map((c) => c.number)).toEqual([1, 2, 3, 4]);
+    expect(new Set(COMPETITIONS.map((c) => c.slug)).size).toBe(4);
     for (const c of COMPETITIONS) {
       expect(c.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(c.minAge).toBeGreaterThanOrEqual(3);
@@ -51,7 +51,7 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     await db.close();
   });
 
-  it("plans six creations on an empty table without writing anything", async () => {
+  it("plans four creations on an empty table without writing anything", async () => {
     await fresh();
     const plan = await planSeed(db);
     expect(plan.toCreate.map((c) => c.slug)).toEqual(COMPETITIONS.map((c) => c.slug));

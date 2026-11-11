@@ -11,6 +11,4 @@ export const COMPETITIONS: readonly Competition[] = [
   { number: 2, slug: "kathai-sollum-kutties", nameTa: "கதை சொல்லும் குட்டீஸ்", nameEn: "Little Storytellers", minAge: 5, maxAge: 8 },
   { number: 3, slug: "thirukkural-thiramai", nameTa: "திருக்குறள் திறமை", nameEn: "Thirukkural Talent", minAge: 6, maxAge: 12 },
   { number: 4, slug: "kutti-pesalar", nameTa: "குட்டிப் பேச்சாளர்", nameEn: "Little Speaker", minAge: 8, maxAge: 12 },
-  { number: 5, slug: "tamil-kalaikoodam", nameTa: "தமிழ் கலைக்கூடம்", nameEn: "Tamil Art Studio", minAge: 5, maxAge: 12 },
-  { number: 6, slug: "tamilil-sollu", nameTa: "தமிழில் சொல்லு!", nameEn: "Say It in Tamil", minAge: 6, maxAge: 12 },
 ];

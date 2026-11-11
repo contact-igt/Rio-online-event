@@ -21,7 +21,7 @@ export const otpSchema = (length: number) =>
     .transform((s) => s.replace(/\s+/g, ""))
     .pipe(z.string().regex(new RegExp(`^[0-9]{${length}}$`)));
 
-/** The selected competition, only if it is one of the six known slugs. Anything else (including a URL) is dropped. */
+/** The selected competition, only if it is one of the known competition slugs. Anything else (including a URL) is dropped. */
 export function parseEventSlug(value: unknown): string | null {
   return typeof value === "string" && getEvent(value) ? value : null;
 }

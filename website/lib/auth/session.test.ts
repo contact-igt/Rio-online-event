@@ -57,7 +57,7 @@ describe("protected routes", () => {
   it("let a signed-in parent through and return the user", async () => {
     const user = { id: "u1", email: "a@example.com" };
     h.getUser.mockResolvedValue({ data: { user }, error: null });
-    await expect(requireParent("tamilil-sollu")).resolves.toEqual(user);
+    await expect(requireParent("kutti-pesalar")).resolves.toEqual(user);
   });
 
   it("send visitors to sign-in (not into a loop or a crash) when Supabase is not configured", async () => {

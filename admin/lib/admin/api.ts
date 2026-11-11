@@ -57,3 +57,63 @@ export const loadRegistration = async (entryCode: string): Promise<Loaded<Regist
   const loaded = await get<{ registration: RegistrationDetail }>(`/admin/registrations/${encodeURIComponent(entryCode)}`);
   return loaded.ok ? { ok: true, data: loaded.data.registration } : loaded;
 };
+
+export type AdminJudgeRow = {
+  id: number;
+  name: string;
+  email: string;
+  judgeCode: string;
+  active: boolean;
+  mustChangePassword: boolean;
+  assigned: number;
+  drafts: number;
+  final: number;
+  progress: number | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+};
+
+export const loadJudgesList = async (): Promise<Loaded<AdminJudgeRow[]>> => {
+  const loaded = await get<{ judges: AdminJudgeRow[] }>("/admin/judges");
+  return loaded.ok ? { ok: true, data: loaded.data.judges } : loaded;
+};
+
+export async function provisionJudgeApi(data: { email: string; displayName: string }, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; id: number; email: string; displayName: string; judgeCode: string; generatedPassword: string }>("/admin/judges", {
+    method: "POST",
+    body: data,
+    cookie,
+    csrf,
+  });
+}
+
+export async function setJudgeActiveApi(judgeId: number | string, active: boolean, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/judges/${judgeId}/active`, {
+    method: "PATCH",
+    body: { active },
+    cookie,
+    csrf,
+  });
+}
+
+export async function resetJudgePasswordApi(judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; generatedPassword: string }>(`/admin/judges/${judgeId}/reset-password`, {
+    method: "POST",
+    cookie,
+    csrf,
+  });
+}
+
+export async function assignJudgeApi(slug: string, judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; added: number }>(`/admin/competitions/${encodeURIComponent(slug)}/assign-judge`, {
+    method: "POST",
+    body: { judgeId: Number(judgeId) },
+    cookie,
+    csrf,
+  });
+}
+

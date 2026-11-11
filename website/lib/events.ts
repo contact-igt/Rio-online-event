@@ -1,6 +1,7 @@
-// Single source of truth for the six competitions. Tamil names, ages and tasks come from the
-// event poster. English names are plain-language glosses and English task lines are translations
-// of the poster's Tamil; both are marked for owner confirmation in PROJECT_BRIEF.md.
+// Single source of truth for the competitions shown on the public site. Tamil names, ages and tasks come from the
+// event poster. English names are plain-language glosses and English task lines are translations of the poster's Tamil; both are
+// marked for owner confirmation in PROJECT_BRIEF.md. The poster's competitions 5 (Tamil Art Studio, tamil-kalaikoodam) and 6 (Say It
+// in Tamil, tamilil-sollu) were withdrawn by the owner on 2026-11-11 and are not shown; their rows stay in the database.
 
 export const AGE_MIN = 3;
 export const AGE_MAX = 12;
@@ -57,27 +58,6 @@ export const events: readonly CompetitionEvent[] = [
     maxAge: 12,
     taskTa: "தலைப்பு: “தமிழ் என் அடையாளம்” – 1 நிமிட உரை!",
     taskEn: "Give a 1-minute speech. Topic: “Tamil is my identity”.",
-  },
-  {
-    number: 5,
-    slug: "tamil-kalaikoodam",
-    nameTa: "தமிழ் கலைக்கூடம்",
-    nameEn: "Tamil Art Studio",
-    minAge: 5,
-    maxAge: 12,
-    // The poster prints “கைவிளைப் பொருள்”, which looks like a typo for “கைவினைப் பொருள்” (handicraft).
-    taskTa: "தமிழ் எழுத்துக்களைப் பயன்படுத்தி ஓவியம், கைவினைப் பொருள் உருவாக்குங்கள்!",
-    taskEn: "Create a painting or craft using Tamil letters.",
-  },
-  {
-    number: 6,
-    slug: "tamilil-sollu",
-    nameTa: "தமிழில் சொல்லு!",
-    nameEn: "Say It in Tamil",
-    minAge: 6,
-    maxAge: 12,
-    taskTa: "ஆங்கில வார்த்தைகளுக்கான சரியான தமிழ்ப் பொருளை சொல்லுங்கள்!",
-    taskEn: "Say the correct Tamil word for each English word.",
   },
 ];
 

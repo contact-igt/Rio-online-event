@@ -13,7 +13,7 @@ export const revalidate = 60; // the only live fact here is whether registration
 
 export const metadata: Metadata = {
   title: "போட்டிகள் · Competitions",
-  description: `Choose a competition for your child (ages ${AGE_MIN} to ${AGE_MAX}). Six online Tamil video competitions from Rio Hospital for Women & Children.`,
+  description: `Choose a competition for your child (ages ${AGE_MIN} to ${AGE_MAX}). Four online Tamil video competitions from Rio Hospital for Women & Children.`,
 };
 
 const stages: { ta: string; en: string; icon: IconName }[] = [
