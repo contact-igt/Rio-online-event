@@ -263,7 +263,7 @@ export async function saveScore(
   now: Date,
   actor: { judgeId: number; requestId: string },
   entryCode: string,
-  input: { marks: number | null; comments?: string; final: boolean },
+  input: { marks: number | null; comments?: string | undefined; final: boolean },
 ): Promise<{ ok: true; status: "draft" | "final"; marks: number | null }> {
   const assignRes = await db.query<{ id: unknown }>(
     `
