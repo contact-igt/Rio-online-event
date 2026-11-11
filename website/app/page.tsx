@@ -6,7 +6,7 @@ import { InfoStrip } from "@/components/ui/info-strip";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Steps, type Step } from "@/components/ui/steps";
 import { emailEnabled } from "@/lib/email/config";
-import { AGE_MAX, AGE_MIN, awards, events, rules } from "@/lib/events";
+import { AGE_MAX, AGE_MIN, awards, events, prizes, rules } from "@/lib/events";
 import { loadPublicRegistration } from "@/lib/registration/public-status";
 
 // The campaign landing page. Mobile first: a short hero with two clear actions, then the competitions, how to take part, the rules.
@@ -22,7 +22,7 @@ const facts = [
 ] as const;
 
 const ruleList = [
-  { ta: `வயது வரம்பு: ${AGE_MIN} – ${AGE_MAX} ஆண்டுகள்`, en: `Age limit: ${AGE_MIN} – ${AGE_MAX} years` },
+  { ta: `வயது வரம்பு: ${AGE_MIN} வயது முதல் ${AGE_MAX} வயது வரை`, en: `Age limit: ${AGE_MIN} – ${AGE_MAX} years` },
   { ta: `வீடியோ நீளம்: ${rules.videoSeconds.min} – ${rules.videoSeconds.max} வினாடிகள்`, en: `Video length: ${rules.videoSeconds.min} – ${rules.videoSeconds.max} seconds` },
   { ta: "தெளிவான ஒலி மற்றும் காட்சி", en: "Clear audio and video" },
   { ta: "ஒரு குழந்தைக்கு ஒரு போட்டி மட்டும்", en: "One competition entry per child" },
@@ -133,7 +133,7 @@ export default async function HomePage() {
           items={[
             { icon: "calendar", ta: "குழந்தைகள் தினச் சிறப்பு நிகழ்வு", en: "Children's Day Special Event" },
             { icon: "users", ta: `${events.length} போட்டிகள்`, en: `${events.length} Competitions` },
-            { icon: "trophy", ta: `${AGE_MIN}–${AGE_MAX} வயதினருக்குத் திறந்தது`, en: `Open for ages ${AGE_MIN}–${AGE_MAX}` },
+            { icon: "trophy", ta: `${AGE_MIN} முதல் ${AGE_MAX} வயதுடைய குழந்தைகள்`, en: `Open for ages ${AGE_MIN}–${AGE_MAX}` },
             { icon: "laptop", ta: "ஆன்லைன் பங்கேற்பு", en: "Online participation" },
           ]}
         />
@@ -187,21 +187,58 @@ export default async function HomePage() {
           </div>
 
           <div className="card-soft p-6 sm:p-8">
-            <h2 className="text-[clamp(1.5rem,4vw,2.1rem)] font-extrabold">
-              பரிசுகள் <span lang="en">· Prizes and Awards</span>
+            <h2 className="text-[clamp(1.5rem,4vw,2.1rem)] font-extrabold text-rio-navy">
+              பரிசுகள் <span lang="en" className="text-rio-slate font-sans text-[0.8em]">· Prizes & Cash Awards</span>
             </h2>
-            <p className="mt-3">சிறந்த பங்கேற்பாளர்களுக்குப் பரிசுகளும் சான்றிதழ்களும் வழங்கப்படும். விவரங்கள் பின்னர் உறுதிசெய்யப்படும்.</p>
-            <p lang="en" className="text-rio-slate">
-              Prizes and certificates for the best entries. Details will be confirmed later.
+            <p className="mt-2 text-base text-rio-navy font-semibold">
+              வெற்றி பெறும் குழந்தைகளுக்கு ரொக்கப் பரிசுகளும் பாராட்டுச் சான்றிதழ்களும் வழங்கப்படும்!
             </p>
-            <div className="mt-5 rounded-2xl bg-white p-4">
-              <p lang="en" className="inline-block rounded-full bg-rio-rose px-4 py-1 text-sm font-bold text-white">
-                Award categories
+            <p lang="en" className="text-sm text-rio-slate">
+              Exciting cash prizes and merit certificates for winning participants!
+            </p>
+
+            {/* 3 Cash Prize Cards */}
+            <div className="mt-5 grid grid-cols-3 gap-2.5 sm:gap-3.5">
+              {prizes.map((p, idx) => {
+                const borderStyles = [
+                  "border-amber-300 bg-amber-50/70",
+                  "border-slate-300 bg-slate-50/70",
+                  "border-orange-300 bg-orange-50/60",
+                ][idx];
+                const badgeStyles = [
+                  "bg-amber-400 text-amber-950",
+                  "bg-slate-300 text-slate-800",
+                  "bg-amber-700 text-white",
+                ][idx];
+                return (
+                  <div
+                    key={p.place}
+                    className={`flex flex-col items-center justify-between rounded-2xl border-2 ${borderStyles} p-3 sm:p-4 text-center shadow-2xs`}
+                  >
+                    <span className={`grid size-9 sm:size-10 place-items-center rounded-full ${badgeStyles} font-black text-base shadow-2xs`}>
+                      {p.medal}
+                    </span>
+                    <span className="mt-2 font-display text-xs sm:text-sm font-bold text-rio-navy">
+                      {p.place}
+                      <span lang="ta" className="block text-[11px] font-medium text-rio-slate">{p.placeTa}</span>
+                    </span>
+                    <strong className="mt-1.5 font-display text-base sm:text-2xl font-black text-rio-rose tracking-tight">
+                      {p.formatted}
+                    </strong>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Award Categories */}
+            <div className="mt-5 rounded-2xl bg-white p-4 border border-slate-200/80 shadow-2xs">
+              <p lang="en" className="inline-block rounded-full bg-rio-navy px-3.5 py-1 text-xs font-bold text-white">
+                Award categories & Certificates / சான்றிதழ்கள்
               </p>
-              <ul lang="en" className="mt-3 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+              <ul lang="ta" className="mt-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
                 {awards.map((a) => (
-                  <li key={a} className="flex items-center gap-2 font-semibold text-rio-navy">
-                    <Icon name="star" className="h-5 w-5 text-rio-rose" />
+                  <li key={a} className="flex items-center gap-2 text-sm font-semibold text-rio-navy">
+                    <Icon name="star" className="h-4 w-4 text-rio-rose" />
                     {a}
                   </li>
                 ))}

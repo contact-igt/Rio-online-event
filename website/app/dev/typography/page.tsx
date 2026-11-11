@@ -79,7 +79,7 @@ export default function TypographyPage() {
             <p className="text-[1.35rem] leading-snug" style={{ fontWeight: 700, color: "var(--rio-navy)" }}>{ev.nameTa}</p>
             <p className="text-lg" style={{ fontWeight: 600, color: "var(--rio-navy)" }}><En role="heading">{ev.nameEn}</En></p>
             <p className="chip mt-3 inline-flex" style={{ fontWeight: face.label }}>
-              வயது / <En role="body">Age:</En> {ev.minAge}–{ev.maxAge} ஆண்டுகள் / <En role="body">years</En>
+              வயது / <En role="body">Age:</En> {ev.minAge}–{ev.maxAge} வயது / <En role="body">years</En>
             </p>
             <p className="mt-3" style={{ fontWeight: face.body }}>{ev.taskTa}</p>
             <p className="text-rio-slate" style={{ fontWeight: 400 }}><En role="body">{ev.taskEn}</En></p>
