@@ -62,15 +62,12 @@ describe("server-only modules never reach the browser", () => {
 describe("the upload master switch (RIO_UPLOADS_ENABLED) is enforced on the server, not just in the UI", () => {
   const get = (p: string) => files.find((f) => f.path === p)!.text;
 
-  it("both server actions check the switch FIRST, before they even look up the session", () => {
+  // Since 2026-11-11 the Express API is the authority for uploads (backend/src/registration/video.ts enforces RIO_UPLOADS_ENABLED there).
+  it("the upload actions only forward to the Express API: no bucket client, no R2 setting, no Supabase, no entry id from the page", () => {
     const actions = get("app/events/[slug]/register/video-actions.ts");
-    for (const fn of ["requestVideoUpload", "confirmVideoUpload"]) {
-      const body = actions.slice(actions.indexOf(`export async function ${fn}`));
-      const end = body.indexOf("\n}\n");
-      const text = body.slice(0, end);
-      expect(text.indexOf("uploadsAvailable()"), fn).toBeGreaterThan(-1);
-      expect(text.indexOf("uploadsAvailable()"), fn).toBeLessThan(text.indexOf("await parent()"));
-    }
+    expect(actions.startsWith('"use server"')).toBe(true);
+    expect(actions).toContain('from "@/lib/registration/express"');
+    expect(actions).not.toMatch(/createUploadDeps|lib\/upload\/server|lib\/storage|R2_|supabase|submissionId/);
   });
 
   it("the dependency builder refuses to build while the switch is off", () => {
@@ -85,10 +82,10 @@ describe("the upload master switch (RIO_UPLOADS_ENABLED) is enforced on the serv
     }
   });
 
-  it("the M6A registration page keeps upload as a later-stage placeholder and never imports legacy upload actions", () => {
+  it("the registration page offers upload only when the API says uploads are open, and never imports bucket or legacy upload code", () => {
     const page = get("app/events/[slug]/register/page.tsx");
-    expect(page).toContain("Video upload and final submission will be available in a later stage");
-    expect(page).not.toMatch(/lib\/upload\/|video-actions|uploadsConfigured|uploadsAvailable|R2_/);
+    expect(page).toContain("settings?.videoUploads");
+    expect(page).not.toMatch(/lib\/upload\/server|createUploadDeps|uploadsConfigured|lib\/storage|R2_/);
   });
 
   it("the content security policy only names the bucket host when the switch is on", () => {
@@ -150,22 +147,20 @@ describe("final submission (RIO_FINALIZE_ENABLED) is enforced on the server and 
     for (const f of files.filter((x) => !isTest(x.path) && /^(app|components|lib)\//.test(x.path))) expect(f.text, f.path).not.toMatch(/\bfinalize_submission\b/);
   });
 
-  it("only lib/submit builds the database calls that finalize, and only the one server action uses it", () => {
+  it("the legacy Supabase finalizer is confined to lib/submit, and no page or action uses it any more", () => {
     const users = files.filter((f) => !isTest(f.path) && /^(app|components|lib)\//.test(f.path) && /finalize_verified_submission|check_finalize|createFinalizeDeps|finalizeEntry/.test(f.text));
-    expect(users.map((f) => f.path).sort()).toEqual(["app/events/[slug]/register/submit-actions.ts", "lib/submit/server.ts", "lib/submit/service.ts"]);
+    expect(users.map((f) => f.path).sort()).toEqual(["lib/submit/server.ts", "lib/submit/service.ts"]);
     for (const f of files.filter((x) => !isTest(x.path) && /^(app|components)\//.test(x.path) && x.path !== "app/events/[slug]/register/submit-actions.ts")) {
       expect(f.text, f.path).not.toMatch(/createFinalizeDeps|finalizeEntry|finalize_verified_submission/);
     }
   });
 
-  it("the server action checks the switch FIRST, before it looks up the session", () => {
+  // Since 2026-11-11 the Express API decides (backend/src/registration/submit.ts): window, draft, consent, answers, video, length, duplicates.
+  it("the submit action only forwards to the Express API with the entry's CSRF token, and never touches Supabase or the bucket", () => {
     const actions = get("app/events/[slug]/register/submit-actions.ts");
     expect(actions.startsWith('"use server"')).toBe(true);
-    const body = actions.slice(actions.indexOf("export async function submitEntry"));
-    expect(body.indexOf("finalizeAvailable()")).toBeGreaterThan(-1);
-    expect(body.indexOf("finalizeAvailable()")).toBeLessThan(body.indexOf("await parent()"));
-    expect(body.indexOf("await parent()")).toBeLessThan(body.indexOf("createFinalizeDeps()"));
-    expect(actions).toContain("auth.getUser()"); // the parent is verified with Supabase, never read from the request
+    expect(actions).toContain("submitRegistration(current.csrfToken)");
+    expect(actions).not.toMatch(/supabase|createFinalizeDeps|finalizeEntry|lib\/storage|R2_|submissionId/);
   });
 
   it("the dependency builder refuses to build while the switch is off", () => {
@@ -174,10 +169,10 @@ describe("final submission (RIO_FINALIZE_ENABLED) is enforced on the server and 
     expect(server).toContain('=== "yes"');
   });
 
-  it("the M6A registration page keeps final submission disabled and never imports the legacy submit action", () => {
+  it("the registration page offers final submission only once the video is attached and uploads are open, and never imports legacy submit code", () => {
     const page = get("app/events/[slug]/register/page.tsx");
-    expect(page).toContain("Video upload and final submission will be available in a later stage");
-    expect(page).not.toMatch(/lib\/submit\/|submit-actions|process\.env\.RIO_FINALIZE_ENABLED/);
+    expect(page).toContain("view?.video?.uploaded && editable && settings?.videoUploads");
+    expect(page).not.toMatch(/lib\/submit\/(server|service)|process\.env\.RIO_FINALIZE_ENABLED/);
   });
 
   it("client components import only types from the final-submission service, and never the bucket or database clients", () => {
@@ -394,12 +389,10 @@ describe("participation e-mail (M7)", () => {
     }
   });
 
-  it("only the one submit action queues a confirmation, after the response, and only for the request that made the transition", () => {
+  it("nothing queues the legacy (Supabase) confirmation e-mail since submission moved to the Express API", () => {
+    // The confirmation e-mail is to be rebuilt on the Express API; until then no page or action may reach the old outbox.
     const users = files.filter((f) => !isTest(f.path) && /queueConfirmation/.test(f.text)).map((f) => f.path).sort();
-    expect(users).toEqual(["app/events/[slug]/register/submit-actions.ts", "lib/email/server.ts"]);
-    const actions = get("app/events/[slug]/register/submit-actions.ts");
-    expect(actions).toContain("if (result.ok && !result.already) after(() => queueConfirmation(input.submissionId));");
-    expect(actions.indexOf("finalizeEntry(")).toBeLessThan(actions.indexOf("queueConfirmation("));
+    expect(users).toEqual(["lib/email/server.ts"]);
   });
 
   it("the retired retry endpoint is closed: a plain 404 that reads no service, secret or request data", () => {

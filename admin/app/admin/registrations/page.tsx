@@ -79,6 +79,11 @@ export default async function AdminRegistrationsPage({ searchParams }: { searchP
                   <span className="text-sm text-rio-slate sm:text-right">
                     <strong className="text-rio-navy">{STATUS[r.status] ?? r.status}</strong>
                     {r.openDuplicateFlag && <span className="ml-2 rounded-full bg-rio-blush px-2 py-0.5 text-xs font-bold text-rio-rose">Possible duplicate</span>}
+                    {r.hasVideo !== undefined && (
+                      <span className={`mt-1 block w-fit rounded-full border px-2 py-0.5 text-xs font-bold sm:ml-auto ${r.hasVideo ? "border-rio-ok/40 text-rio-ok" : "border-rio-slate/30 text-rio-slate"}`}>
+                        {r.hasVideo ? "Video uploaded / வீடியோ உள்ளது" : "No video yet / வீடியோ இல்லை"}
+                      </span>
+                    )}
                     <span className="block">{formatIst(r.createdAt)}</span>
                   </span>
                 </Link>
