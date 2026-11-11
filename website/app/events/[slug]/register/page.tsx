@@ -9,7 +9,7 @@ import { RecoveryForm } from "@/components/registration/recovery-form";
 import { RegistrationForm } from "@/components/registration/registration-form";
 import { Icon } from "@/components/ui/icon";
 import { getEvent } from "@/lib/events";
-import { getConsentCopy } from "@/lib/registration/consent";
+import { consentActivationState, getConsentCopy } from "@/lib/registration/consent";
 import { currentRegistration, publicEvents, publicSettings, type PublicEvent } from "@/lib/registration/express";
 import { reg } from "@/lib/registration/messages";
 
@@ -39,7 +39,8 @@ export default async function RegisterPage({ params, searchParams }: { params: P
   // An existing draft keeps the question version it was created with; only a new entry gets the set published now.
   const questionSet = view ? view.questionSet : remote.questionSet;
   const open = Boolean(settings?.registrationOpen && questionSet);
-  const consent = settings?.guardianConsentVersion ? getConsentCopy(settings.guardianConsentVersion) : null;
+  const consentUnavailable = settings?.guardianConsentVersion !== null && settings?.guardianConsentVersion !== undefined && consentActivationState(settings.guardianConsentVersion) === "unavailable";
+  const consent = !consentUnavailable && settings?.guardianConsentVersion ? getConsentCopy(settings.guardianConsentVersion) : null;
   const editable = view?.editable === true;
   const query = await searchParams;
   const recoveryNotice = (await cookies()).get("rio_recovery_notice")?.value ?? null;
@@ -60,7 +61,8 @@ export default async function RegisterPage({ params, searchParams }: { params: P
           <EventSummary event={event} />
           <div className="min-w-0 space-y-6">
             {query.saved === "1" && recoveryNotice && <div role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4"><p className="font-display text-xl font-bold text-rio-ok">வரைவு சேமிக்கப்பட்டது <span lang="en" className="font-medium">/ Draft saved</span></p><p className="mt-2">Keep this recovery code safe. It is the only way to reopen this draft.</p><p className="mt-3 rounded-xl bg-rio-mist p-3 font-mono text-lg font-bold tracking-widest text-rio-navy" aria-label="Recovery code">{recoveryNotice}</p></div>}
-            {!open && <div className="card-soft p-5"><h2 className="text-2xl font-bold">{reg.closed.title.ta}<span lang="en" className="block text-rio-slate">{reg.closed.title.en}</span></h2><p className="mt-2"><Bilingual m={reg.closed.body} /></p></div>}
+            {consentUnavailable && <div className="card-soft p-5"><h2 className="text-2xl font-bold">Registration is temporarily unavailable.<span lang="ta" className="block text-rio-slate">பதிவு தற்காலிகமாக கிடைக்கவில்லை.</span></h2><p className="mt-2">The required guardian-consent wording is not available yet. Please try again later.</p></div>}
+            {!open && !consentUnavailable && <div className="card-soft p-5"><h2 className="text-2xl font-bold">{reg.closed.title.ta}<span lang="en" className="block text-rio-slate">{reg.closed.title.en}</span></h2><p className="mt-2"><Bilingual m={reg.closed.body} /></p></div>}
             {elsewhere && <div className="card-soft p-5"><p className="font-semibold text-rio-navy">You have a saved draft for another competition: {elsewhere.event.nameEn}.<span lang="ta" className="block">வேறு போட்டிக்கான வரைவு உங்களிடம் உள்ளது: {elsewhere.event.nameTa}.</span></p><Link href={`/events/${elsewhere.event.slug}/register`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">Open that draft / அந்த வரைவைத் திற</Link></div>}
             {!view && <RecoveryForm event={event.slug} />}
             {open && consent && questionSet && (!view || editable) &&<div className="card p-5 sm:p-7"><div className="flex items-start gap-4"><span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rio-blush text-rio-rose"><Icon name="edit" className="h-7 w-7" /></span><div><h2 className="text-2xl font-bold">{(view ? reg.form.editTitle : reg.title).ta} <span lang="en">/ {(view ? reg.form.editTitle : reg.title).en}</span></h2><p className="text-rio-slate"><Bilingual m={reg.form.intro} /></p></div></div><div className="mt-5"><RegistrationForm key={view?.reference ?? "new"} event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }} questions={questionSet.questions} consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }} draft={draft} /></div></div>}

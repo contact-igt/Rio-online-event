@@ -74,6 +74,6 @@ describe.each(dialects)("%s migration 0013 (super_admin role)", (dialect: Dialec
 
   it("is recorded once and a second run changes nothing", async () => {
     const all = await loadMigrations(migrationsDir(dialect));
-    expect(await migrate(db, all, TRACKING)).toEqual({ applied: [] });
+    expect(await migrate(db, all.filter((m) => m.version <= "0013"), TRACKING)).toEqual({ applied: [] });
   });
 });

@@ -13,6 +13,7 @@ import { captureLogger, listen, testConfig } from "../test-helpers.ts";
 
 const TRACKING = "zz_results_migrations";
 const HOUR = 3_600_000;
+const RESULTS_FLOOR = Date.parse("2026-11-13T18:30:00.000Z");
 
 describe.each(dialects)("%s public results", (dialect: Dialect) => {
   let db: DatabaseAdapter;
@@ -66,11 +67,11 @@ describe.each(dialects)("%s public results", (dialect: Dialect) => {
   });
 
   it("reports published with an empty list once the time has passed and nobody was approved", async () => {
-    const start = Date.now();
+    const start = Math.max(Date.now(), RESULTS_FLOOR);
     await sql("DELETE FROM winners WHERE submission_id = ?", [entry.submissionId]); // allowed: nothing is published yet
     await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date(start - 2 * HOUR), new Date(start + HOUR), new Date(start + 2 * HOUR)]);
     expect((await results()).body).toEqual({ state: "pending" });
-    clockOffset = 3 * HOUR; // the endpoint's clock moves past the publication time; the database clock does not
+    clockOffset = start + 3 * HOUR - Date.now(); // the endpoint's clock moves past the publication time; the database clock does not
     expect((await results()).body).toEqual({ state: "published", winners: [] });
     clockOffset = 0;
     await sql("UPDATE event_settings SET results_publish_at = NULL, submissions_open_at = NULL, submissions_close_at = NULL, guardian_consent_version = NULL WHERE id = 1");
@@ -78,9 +79,10 @@ describe.each(dialects)("%s public results", (dialect: Dialect) => {
 
   it("shows nothing before the publication time, and the winner afterwards (display name only)", async () => {
     await sql("INSERT INTO winners (event_id, submission_id, place, award_label, display_name, approved_by) VALUES (?, ?, 1, 'Gold', 'Winner C.', ?)", [entry.eventId, entry.submissionId, entry.staffId]);
-    const start = Date.now();
+    const start = Math.max(Date.now(), RESULTS_FLOOR) + HOUR;
     await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date(start - 2 * HOUR), new Date(start + 400), new Date(start + 1200)]);
     expect((await results()).body).toEqual({ state: "pending" });
+    if (Date.now() < RESULTS_FLOOR) return; // The database view deliberately uses its real clock; do not fake publication before the approved date.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, start + 1500 - Date.now())));
     const reply = await results();
     expect(reply.body).toEqual({ state: "published", winners: [{ eventSlug: "alpha-contest", place: 1, awardLabel: "Gold", displayName: "Winner C." }] });

@@ -6,7 +6,7 @@ import { SubmitButton } from "@/components/auth/submit-button";
 import { Icon } from "@/components/ui/icon";
 import { fieldMessages, fieldsOf, type ApiSettings, type FieldName, type FormError } from "@/lib/event-settings/settings";
 
-// Event settings form. Times are typed in Asia/Kolkata. Registration stays closed in this release: the API refuses a window that is open now.
+// Event settings form. Times are typed in Asia/Kolkata. The API is the authority on every rule; `openMin` only steers the date picker.
 
 const FORM_ERRORS: Record<FormError, { en: string; ta: string }> = {
   forbidden: { en: "Only an administrator can change these settings.", ta: "நிர்வாகி மட்டுமே இந்த அமைப்புகளை மாற்ற முடியும்." },
@@ -23,7 +23,7 @@ const FIELDS: { name: FieldName; en: string; ta: string; type: "datetime-local" 
   { name: "resultsPublishAt", en: "Results published at (IST)", ta: "முடிவுகள் வெளியாகும் நேரம்", type: "datetime-local", help: "Only a schedule. Nothing is published until an administrator approves the winners." },
 ];
 
-export function SettingsForm({ settings }: { settings: ApiSettings }) {
+export function SettingsForm({ settings, openMin }: { settings: ApiSettings; openMin: string }) {
   const [state, action] = useActionState(saveSettingsAction, undefined);
   const shown = state?.ok ? state.settings : settings;
   // Controlled, so a rejected save keeps what the administrator typed (an uncontrolled form is reset after every action).
@@ -55,6 +55,7 @@ export function SettingsForm({ settings }: { settings: ApiSettings }) {
               type={f.type}
               value={values[f.name]}
               onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              min={f.name === "opensAt" ? openMin : undefined}
               maxLength={f.type === "text" ? 40 : undefined}
               autoComplete="off"
               spellCheck={false}

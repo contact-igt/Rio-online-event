@@ -15,7 +15,7 @@ const items: Item[] = [
   { label: "Dashboard", ta: "முகப்பு", icon: "list", href: () => "/admin", active: (p) => p === "/admin" },
   { label: "Registrations", ta: "பதிவுகள்", icon: "clipboard", href: () => "/admin/registrations", active: (p) => p.startsWith("/admin/registrations") },
   { label: "Judges", ta: "நடுவர்கள்", icon: "user", href: () => "/admin/judges", active: (p) => p.startsWith("/admin/judges") },
-  { label: "Questions", ta: "கேள்விகள்", icon: "edit", href: (e) => (e ? `${e}/questions` : "/admin#competitions"), active: (p) => /questions$/.test(p) },
+  { label: "Questions", ta: "கேள்விகள்", icon: "edit", href: () => "/admin/questions", active: (p) => p.startsWith("/admin/questions") || /questions$/.test(p) },
   { label: "Assign Judges", ta: "நடுவரை ஒதுக்கு", icon: "users", href: (e) => (e ? `${e}#assign` : "/admin#competitions") },
   { label: "Scoring", ta: "மதிப்பெண்", icon: "star", href: (e) => (e ? `${e}#ranking` : "/admin#competitions") },
   { label: "Results", ta: "முடிவுகள்", icon: "trophy", href: (e) => (e ? `${e}#winners` : "/admin#competitions") },

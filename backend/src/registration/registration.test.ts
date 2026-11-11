@@ -201,6 +201,12 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
       expect((await call("/api/v1/settings/public")).body.registrationOpen).toBe(false);
     });
 
+    it("fails closed for an unsupported current guardian-consent version", async () => {
+      await openRegistration({ guardian: "Test" });
+      expect((await call("/api/v1/settings/public")).body.registrationOpen).toBe(false);
+      expect((await create()).body.error?.code).toBe("registration_closed");
+    });
+
     it("opens exactly inside the window and follows the clock", async () => {
       await openRegistration({ open: HOUR, close: 3 * HOUR });
       expect((await call("/api/v1/settings/public")).body.registrationOpen).toBe(false);
@@ -768,10 +774,10 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
     it("re-records the guardian's consent under the current wording and audits it, without the content", async () => {
       const s = await register();
       clock.t += HOUR;
-      await openRegistration({ guardian: "v2" });
-      expect((await patch(s, { guardianConsent: { accepted: true, version: "v1" } })).body.error?.code).toBe("consent_version_changed");
-      const r = await patch(s, { guardianConsent: { accepted: true, version: "v2" } });
-      expect(r.body.registration!.consent.guardian).toEqual({ version: "v2", at: now().toISOString() });
+      await openRegistration({ guardian: "v1" });
+      expect((await patch(s, { guardianConsent: { accepted: true, version: "v0" } })).body.error?.code).toBe("consent_version_changed");
+      const r = await patch(s, { guardianConsent: { accepted: true, version: "v1" } });
+      expect(r.body.registration!.consent.guardian).toEqual({ version: "v1", at: now().toISOString() });
       expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.consent_recorded' AND entity_id = ?", [String(await idOf(s.reference))])).toBe(1);
     });
 

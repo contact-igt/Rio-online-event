@@ -6,8 +6,8 @@ import { istInputToIso, type ApiSettings, type FormError } from "@/lib/event-set
 import { staffSession } from "@/lib/staff/auth";
 
 // Saves the event settings through PATCH /admin/settings. The API is the authority: it checks the session, the Administrator role, the CSRF
-// token and every rule. This action only converts the typed IST times and relays the API's answer. It cannot open registration: the API
-// refuses any window that is already open.
+// token and every rule (opening not in the past, closing after opening, approved guardian consent). This action only converts the typed
+// IST times and relays the API's answer.
 
 export type SettingsState = { ok: true; settings: ApiSettings } | { ok: false; error: FormError; fields?: Record<string, string> } | undefined;
 

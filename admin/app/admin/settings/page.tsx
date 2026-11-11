@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { Icon } from "@/components/ui/icon";
 import { loadSettings } from "@/lib/admin/api";
+import { istMinuteNow } from "@/lib/event-settings/settings";
 import { requireStaff } from "@/lib/staff/auth";
 
 export const metadata: Metadata = { title: "Event settings · Admin", robots: { index: false } };
@@ -25,7 +26,7 @@ export default async function SettingsPage() {
         </h2>
         <div className="mt-4">
           {loaded.ok ? (
-            <SettingsForm settings={loaded.data} />
+            <SettingsForm settings={loaded.data} openMin={istMinuteNow(new Date())} />
           ) : (
             <p role="alert" className="flex items-start gap-3 rounded-2xl border border-rio-error/40 bg-white p-3 font-semibold text-rio-error">
               <Icon name="info" className="mt-0.5 h-5 w-5 shrink-0" />

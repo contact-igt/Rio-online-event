@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldsOf, isoToIstInput, istInputToIso, type ApiSettings } from "./settings";
+import { fieldMessages, fieldsOf, isoToIstInput, istInputToIso, istMinuteNow, type ApiSettings } from "./settings";
 
 describe("IST conversion", () => {
   it("turns a typed IST time into an ISO instant with the +05:30 offset", () => {
@@ -24,5 +24,28 @@ describe("IST conversion", () => {
   it("fills the form from the API settings, empty when unset", () => {
     const s: ApiSettings = { timezone: "Asia/Kolkata", registrationOpen: false, opensAt: null, closesAt: "2026-12-20T12:30:00.000Z", resultsPublishAt: null, resultsPublished: false, guardianConsentVersion: null, mediaConsentVersion: null, updatedAt: null };
     expect(fieldsOf(s)).toEqual({ opensAt: "", closesAt: "2026-12-20T18:00", resultsPublishAt: "", guardianConsentVersion: "" });
+  });
+});
+
+describe("event-settings validation messages", () => {
+  it("explains when owner-approved consent wording is not deployed and when results are too early", () => {
+    expect(fieldMessages.unsupported_consent_version?.en).toMatch(/owner-approved consent wording/);
+    expect(fieldMessages.unsupported_consent_version?.ta).toBeTruthy();
+    expect(fieldMessages.results_before_approved_date?.en).toContain("14 November 2026");
+    expect(fieldMessages.results_before_approved_date?.ta).toBeTruthy();
+  });
+});
+
+describe("opening-time picker minimum", () => {
+  it("is the current IST minute, so today (now or later) stays selectable", () => {
+    expect(istMinuteNow(new Date("2026-11-11T09:00:45.500Z"))).toBe("2026-11-11T14:30");
+  });
+  it("follows the IST date across IST midnight, not the UTC date", () => {
+    expect(istMinuteNow(new Date("2026-11-10T18:30:30.000Z"))).toBe("2026-11-11T00:00");
+  });
+  it("has a bilingual message for a past opening time and none for the removed open-now guard", () => {
+    expect(fieldMessages.opens_in_past?.en).toMatch(/past/);
+    expect(fieldMessages.opens_in_past?.ta).toBeTruthy();
+    expect(fieldMessages).not.toHaveProperty("registration_not_openable_yet");
   });
 });

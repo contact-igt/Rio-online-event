@@ -130,7 +130,7 @@ describe.each(dialects)("%s application schema", (dialect: Dialect) => {
           : "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'";
       const names = new Set((await q<{ name: string }>(sql)).rows.map((r) => String(r.name).toLowerCase()));
       for (const table of [...APP_TABLES, "published_winners", TRACKING]) expect(names.has(table), table).toBe(true);
-      expect(Number((await q<{ n: number }>(`SELECT COUNT(*) AS n FROM ${TRACKING}`)).rows[0]!.n)).toBe(13);
+      expect(Number((await q<{ n: number }>(`SELECT COUNT(*) AS n FROM ${TRACKING}`)).rows[0]!.n)).toBe(14);
     });
 
     it("is idempotent: a second run applies nothing", async () => {
@@ -180,10 +180,19 @@ describe.each(dialects)("%s application schema", (dialect: Dialect) => {
     });
 
     it("refuses a results time without a close time, before the close time, or a consent version with odd characters", async () => {
-      const t = Date.now();
-      await violation(q("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [new Date(t + 3 * DAY)]), "check");
-      await violation(q("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date(t), new Date(t + 2 * DAY), new Date(t + DAY)]), "check");
+      await violation(q("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [new Date("2030-01-03T00:00:00.000Z")]), "check");
+      await violation(q("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date("2030-01-01T00:00:00.000Z"), new Date("2030-01-03T00:00:00.000Z"), new Date("2030-01-02T00:00:00.000Z")]), "check");
       await violation(q("UPDATE event_settings SET guardian_consent_version = 'has space' WHERE id = 1"), "check");
+    });
+
+    it("refuses a results schedule before 14 November 2026 at midnight Asia/Kolkata", async () => {
+      if ((await dbNow()) >= new Date("2026-11-13T18:30:00.000Z")) return;
+      await q(
+        "UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1' WHERE id = 1",
+        [new Date("2026-11-12T00:00:00.000Z"), new Date("2026-11-13T00:00:00.000Z")],
+      );
+      await violation(q("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [new Date("2026-11-13T18:29:59.999Z")]), "rule");
+      await q("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [new Date("2026-11-13T18:30:00.000Z")]);
     });
 
     it("accepts a complete configuration, refuses a results time in the past, and can be cleared again before publication", async () => {
@@ -998,6 +1007,7 @@ describe.each(dialects)("%s application schema", (dialect: Dialect) => {
       await insert("winners", { event_id: w.eventId, submission_id: entry, place: 1, display_name: "ஆஷா", approved_by: adminId });
 
       const now = await dbNow();
+      if (now < new Date("2026-11-13T18:30:00.000Z")) return;
       await q("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date(now.getTime() - 2 * DAY), new Date(now.getTime() - DAY), new Date(now.getTime() + 2000)]);
       expect(await count("SELECT COUNT(*) AS n FROM published_winners")).toBe(0); // approved, but the time has not come
 

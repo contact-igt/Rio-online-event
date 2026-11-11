@@ -9,6 +9,7 @@ import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
 import { checkAnswer, missingRequired, type AnswerValue, type Option, type Question, type QuestionType } from "./answers.ts";
 import { canonicalCode, newEntryReference, newRecoveryCode } from "./codes.ts";
+import { isApprovedGuardianConsentVersion } from "./consent.ts";
 import { nameKey } from "./normalize.ts";
 import { ValidationFailed, type CreateInput, type PatchInput } from "./schemas.ts";
 
@@ -60,7 +61,7 @@ async function loadSettings(db: Queryable): Promise<Settings> {
 
 /** Open only when an administrator has set a window AND a consent version, and now is inside the window. Anything unset means closed. */
 const isOpen = (s: Settings, now: Date): boolean =>
-  s.opensAt !== null && s.closesAt !== null && s.guardianConsentVersion !== null && now.getTime() >= s.opensAt.getTime() && now.getTime() < s.closesAt.getTime();
+  s.opensAt !== null && s.closesAt !== null && isApprovedGuardianConsentVersion(s.guardianConsentVersion) && now.getTime() >= s.opensAt.getTime() && now.getTime() < s.closesAt.getTime();
 
 export type PublicSettings = {
   registrationOpen: boolean;

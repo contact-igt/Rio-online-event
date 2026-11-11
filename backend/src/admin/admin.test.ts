@@ -159,16 +159,16 @@ describe.each(dialects)("%s admin dashboard and settings", (dialect: Dialect) =>
     });
     it("saves a future window, consent version and results time, and writes one audit row without personal data", async () => {
       const admin = await signIn("admin");
-      const input = { opensAt: "2026-12-01T09:00:00+05:30", closesAt: "2026-12-20T18:00:00+05:30", resultsPublishAt: "2026-12-30T10:00:00+05:30", guardianConsentVersion: "guardian-v1" };
+      const input = { opensAt: "2026-12-01T09:00:00+05:30", closesAt: "2026-12-20T18:00:00+05:30", resultsPublishAt: "2026-12-30T10:00:00+05:30", guardianConsentVersion: "v1" };
       const { status, body } = await patch(admin, input);
       expect(status).toBe(200);
-      expect(body).toMatchObject({ registrationOpen: false, opensAt: "2026-12-01T03:30:00.000Z", closesAt: "2026-12-20T12:30:00.000Z", resultsPublishAt: "2026-12-30T04:30:00.000Z", guardianConsentVersion: "guardian-v1" });
+      expect(body).toMatchObject({ registrationOpen: false, opensAt: "2026-12-01T03:30:00.000Z", closesAt: "2026-12-20T12:30:00.000Z", resultsPublishAt: "2026-12-30T04:30:00.000Z", guardianConsentVersion: "v1" });
       expect((await call("/api/v1/admin/settings", { who: admin })).body.opensAt).toBe("2026-12-01T03:30:00.000Z");
       const rows = (await sql<{ details: unknown; actor_staff_id: number; entity_type: string }>("SELECT details, actor_staff_id, entity_type FROM audit_log WHERE action = 'settings.update'")).rows;
       expect(rows).toHaveLength(1);
       expect(Number(rows[0]!.actor_staff_id)).toBe(admin.id);
       const details = typeof rows[0]!.details === "string" ? JSON.parse(rows[0]!.details) : rows[0]!.details;
-      expect(details).toMatchObject({ guardianConsentVersion: "guardian-v1", closesAt: "2026-12-20T12:30:00.000Z" });
+      expect(details).toMatchObject({ guardianConsentVersion: "v1", closesAt: "2026-12-20T12:30:00.000Z" });
       expect(Number(await scalar("SELECT updated_by AS n FROM event_settings WHERE id = 1"))).toBe(admin.id);
     });
     it("does not audit a request that changes nothing", async () => {
@@ -177,11 +177,11 @@ describe.each(dialects)("%s admin dashboard and settings", (dialect: Dialect) =>
       await patch(admin, { opensAt: null });
       expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'settings.update'")).toBe(before);
     });
-    it("keeps registration closed: a window that is open right now is refused and nothing is written", async () => {
+    it("refuses an opening time in the past and writes nothing", async () => {
       const admin = await signIn("admin");
       const reply = await patch(admin, { opensAt: iso(-HOUR), closesAt: iso(DAY), guardianConsentVersion: "v1" });
       expect(reply.status).toBe(422);
-      expect(reply.body.error.fields.opensAt).toBe("registration_not_openable_yet");
+      expect(reply.body.error.fields.opensAt).toBe("opens_in_past");
       expect(await scalar("SELECT COUNT(*) AS n FROM event_settings WHERE submissions_open_at IS NOT NULL")).toBe(0);
       expect((await call("/api/v1/admin/settings", { who: admin })).body.registrationOpen).toBe(false);
     });
@@ -234,14 +234,16 @@ describe.each(dialects)("%s admin dashboard and settings", (dialect: Dialect) =>
       expect(cleared.body).toMatchObject({ registrationOpen: false, opensAt: null, closesAt: null, resultsPublishAt: null });
     });
     it("never reschedules results that are already published", async () => {
+      const publishedAt = new Date("2026-11-14T00:00:00.000Z");
+      const originalClock = clock.t;
       // (the first session would be idle here)
-      await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1' WHERE id = 1", [new Date(clock.t - 10 * DAY), new Date(clock.t - 5 * DAY)]);
+      await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1' WHERE id = 1", [new Date(publishedAt.getTime() - 10 * DAY), new Date(publishedAt.getTime() - 5 * DAY)]);
       // Written as a database fixture because the API (and the trigger) refuse a results time in the past.
-      await sql("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [new Date(clock.t + HOUR)]);
-      clock.t += 2 * HOUR;
+      await sql("UPDATE event_settings SET results_publish_at = ? WHERE id = 1", [publishedAt]);
+      clock.t = publishedAt.getTime() + HOUR;
       const later = await signIn("admin"); // the first session went idle while the clock moved
       const reply = await patch(later, { resultsPublishAt: iso(DAY) });
-      clock.t -= 2 * HOUR;
+      clock.t = originalClock;
       expect(reply.status).toBe(409);
       expect(reply.body.error.code).toBe("results_already_published");
     });

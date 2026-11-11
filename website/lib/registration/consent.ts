@@ -40,3 +40,11 @@ const texts: Record<string, ConsentCopy> = {
 export function getConsentCopy(version: string | null | undefined): ConsentCopy | null {
   return version ? (texts[version] ?? null) : null;
 }
+
+// No legal wording is owner-approved yet. Add a version here only together with its approved Tamil and English copy,
+// then add the same version to the backend allowlist. A stale independently deployed website stays unavailable.
+const APPROVED_ACTIVATION_VERSIONS: readonly string[] = [];
+
+export function consentActivationState(version: string | null | undefined): "ready" | "unavailable" {
+  return version && APPROVED_ACTIVATION_VERSIONS.includes(version) && getConsentCopy(version) ? "ready" : "unavailable";
+}

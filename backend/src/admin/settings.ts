@@ -3,6 +3,7 @@ import { writeAudit } from "../auth/audit.ts";
 import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
 import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
+import { isApprovedGuardianConsentVersion } from "../registration/consent.ts";
 
 // The one row of event settings an administrator edits. There is no "enabled" switch in the schema: registration is open only while now is
 // inside the window AND a consent version is set (the same rule the public API applies). "Disabled" therefore means "no window".
@@ -10,9 +11,12 @@ import { AppError } from "../http/errors.ts";
 //   * dates are ISO-8601 with an explicit offset, stored in UTC, shown in Asia/Kolkata;
 //   * opening needs a closing time and a consent version; closing is after opening;
 //   * results are published after registration closes and only at a future time; an already-published time is never moved;
-//   * M5A guard: a change that would leave registration open at the moment of saving is refused, so this milestone cannot open registration.
+//   * a new opening time may be now or later, never earlier: compared at whole-minute precision (the form sends HH:MM), so the current
+//     IST minute is accepted and any earlier minute is refused. Opening now still needs an approved guardian-consent version.
 
 export const TIME_ZONE = "Asia/Kolkata";
+/** 14 November 2026 00:00:00 in Asia/Kolkata, stored and compared as a UTC instant. */
+export const RESULTS_PUBLICATION_FLOOR = new Date("2026-11-13T18:30:00.000Z");
 
 export type SettingsView = { opensAt: Date | null; closesAt: Date | null; resultsPublishAt: Date | null; guardianConsentVersion: string | null; mediaConsentVersion: string | null; updatedAt: Date | null };
 
@@ -43,8 +47,12 @@ export async function loadSettings(db: Queryable): Promise<SettingsView> {
   };
 }
 
+// Same rule as the public registration API: without an approved guardian-consent version registration stays closed whatever the dates say.
 export const registrationOpenAt = (s: SettingsView, now: Date): boolean =>
-  s.opensAt !== null && s.closesAt !== null && s.guardianConsentVersion !== null && now >= s.opensAt && now < s.closesAt;
+  s.opensAt !== null && s.closesAt !== null && isApprovedGuardianConsentVersion(s.guardianConsentVersion) && now >= s.opensAt && now < s.closesAt;
+
+/** Start of the current minute. IST is UTC+05:30, a whole number of minutes, so this is also the start of the current IST minute. */
+const startOfMinute = (now: Date): Date => new Date(Math.floor(now.getTime() / 60_000) * 60_000);
 
 export const present = (s: SettingsView, now: Date): PublicSettingsView => ({
   timezone: TIME_ZONE,
@@ -89,12 +97,14 @@ export function problems(next: SettingsView, current: SettingsView, now: Date): 
   if ((next.opensAt === null) !== (next.closesAt === null)) out[next.opensAt === null ? "opensAt" : "closesAt"] = "window_needs_both";
   else if (next.opensAt && next.closesAt && next.closesAt <= next.opensAt) out.closesAt = "close_before_open";
   if (next.opensAt && next.guardianConsentVersion === null) out.guardianConsentVersion = "consent_version_required";
+  else if (next.guardianConsentVersion !== null && !isApprovedGuardianConsentVersion(next.guardianConsentVersion)) out.guardianConsentVersion = "unsupported_consent_version";
   if (next.resultsPublishAt) {
     if (next.closesAt === null) out.resultsPublishAt = "results_need_close";
     else if (next.resultsPublishAt < next.closesAt) out.resultsPublishAt = "results_before_close";
   }
   if (!out.resultsPublishAt && !sameInstant(next.resultsPublishAt, current.resultsPublishAt) && next.resultsPublishAt && next.resultsPublishAt <= now) out.resultsPublishAt = "results_in_past";
-  if (!out.opensAt && !out.closesAt && registrationOpenAt(next, now)) out.opensAt = "registration_not_openable_yet";
+  if (!out.resultsPublishAt && next.resultsPublishAt && next.resultsPublishAt < RESULTS_PUBLICATION_FLOOR) out.resultsPublishAt = "results_before_approved_date";
+  if (!out.opensAt && !sameInstant(next.opensAt, current.opensAt) && next.opensAt && next.opensAt < startOfMinute(now)) out.opensAt = "opens_in_past";
   return out;
 }
 
