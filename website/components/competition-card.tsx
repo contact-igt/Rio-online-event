@@ -32,7 +32,7 @@ export function CompetitionCard({ event, index = 0, fit = "unknown", age = null,
       <p className="chip self-start">
         <Icon name="users" className="h-4 w-4 text-rio-rose" />
         <span>
-          வயது / <span lang="en">Age:</span> <span lang="en" className="tabular-nums">{event.minAge}–{event.maxAge}</span> ஆண்டுகள் / <span lang="en">years</span>
+          வயது / <span lang="en">Age:</span> <span lang="en" className="tabular-nums">{event.minAge}–{event.maxAge}</span> வயது / <span lang="en">years</span>
         </span>
       </p>
 

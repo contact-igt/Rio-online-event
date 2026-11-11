@@ -31,8 +31,9 @@ describe("competition data (poster fidelity)", () => {
     for (const e of events) expect(e.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
-  it("lists the six poster award names", () => {
-    expect(awards).toHaveLength(6);
+  it("lists the five award categories in Tamil", () => {
+    expect(awards).toHaveLength(5);
+    for (const a of awards) expect(a).toMatch(TAMIL);
   });
 });
 
