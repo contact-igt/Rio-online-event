@@ -104,6 +104,8 @@ const schema = z
     SHUTDOWN_TIMEOUT_SECONDS: integer(1, 120, 10),
     DB_DIALECT: z.enum(["mysql", "sqlite"]).optional(),
     DB_ENGINE: z.enum(["mysql", "mariadb"]).optional(),
+    // Production on MariaDB (a host without MySQL 8) is allowed only when the operator names the exact database here.
+    DB_ACCEPT_MARIADB_IN_PRODUCTION: z.string().min(1).max(64).optional(),
     DATABASE_URL: z.string().optional(),
     DB_ALLOWED_HOST: z.string().min(1).max(253).optional(),
     DB_POOL_SIZE: integer(1, 50, 10),
@@ -139,7 +141,8 @@ const schema = z
       return;
     }
     if (env.DB_ENGINE !== undefined && env.DB_DIALECT !== "mysql") fail("DB_ENGINE", "only applies when DB_DIALECT=mysql");
-    if (env.DB_ENGINE === "mariadb" && production) fail("DB_ENGINE", "mariadb is for local development only and is refused in production");
+    const mariadbAccepted = env.DB_ACCEPT_MARIADB_IN_PRODUCTION !== undefined && env.DB_ACCEPT_MARIADB_IN_PRODUCTION === env.DB_ALLOWED_DATABASE;
+    if (env.DB_ENGINE === "mariadb" && production && !mariadbAccepted) fail("DB_ENGINE", "mariadb is refused in production unless DB_ACCEPT_MARIADB_IN_PRODUCTION names the approved database (DB_ALLOWED_DATABASE)");
     if (env.DB_DIALECT === "sqlite") {
       if (env.NODE_ENV === "production") fail("DB_DIALECT", "sqlite is not allowed in production");
       if (env.SQLITE_PATH === undefined) return fail("SQLITE_PATH", "is required when DB_DIALECT=sqlite");
@@ -156,7 +159,7 @@ const schema = z
     if (env.DB_ALLOWED_HOST === undefined) return fail("DB_ALLOWED_HOST", "is required when DB_DIALECT=mysql");
     // The host in the URL must be the one the operator named, so a stray or copied URL cannot silently point the app elsewhere.
     if (target.host !== env.DB_ALLOWED_HOST.toLowerCase()) fail("DATABASE_URL", "host does not match DB_ALLOWED_HOST");
-    if (production && env.DB_ENGINE !== "mysql") fail("DB_ENGINE", "must be mysql in production (set it explicitly)");
+    if (production && env.DB_ENGINE === undefined) fail("DB_ENGINE", "must be set explicitly in production (mysql, or mariadb with DB_ACCEPT_MARIADB_IN_PRODUCTION)");
     if (production && env.DB_ALLOWED_DATABASE === undefined) fail("DB_ALLOWED_DATABASE", "is required in production (the approved database name)");
     if (env.DB_ALLOWED_DATABASE !== undefined && env.DB_ALLOWED_DATABASE !== target.database) fail("DB_ALLOWED_DATABASE", "does not match the database in DATABASE_URL");
     const loopback = LOOPBACK.has(target.host);

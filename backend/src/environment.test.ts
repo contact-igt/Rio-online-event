@@ -48,7 +48,9 @@ describe("environment-based database selection", () => {
   });
   it("rejects an engine mismatch: mariadb in production, an implicit engine in production", () => {
     expect(failure({ ...prod, DB_ENGINE: "mariadb" })).toContain("DB_ENGINE");
-    expect(failure(without(prod, "DB_ENGINE"))).toContain("DB_ENGINE: must be mysql in production");
+    expect(failure(without(prod, "DB_ENGINE"))).toContain("DB_ENGINE: must be set explicitly in production");
+    expect(loadConfig({ ...prod, DB_ENGINE: "mariadb", DB_ACCEPT_MARIADB_IN_PRODUCTION: "rio_prod" }).database).toMatchObject({ engine: "mariadb" });
+    expect(failure({ ...prod, DB_ENGINE: "mariadb", DB_ACCEPT_MARIADB_IN_PRODUCTION: "other_db" })).toContain("mariadb is refused in production");
   });
   it("rejects NODE_ENV and APP_ENV disagreeing, and a production database without APP_ENV=production", () => {
     expect(failure({ ...prod, APP_ENV: "development" })).toContain("APP_ENV: must equal NODE_ENV");
@@ -91,9 +93,9 @@ describe("assertDatabaseName", () => {
 });
 
 describe("the dev and start scripts", () => {
-  it("dev loads .env.local, start loads no env file, nothing runs migrations", async () => {
+  it("dev loads .env, start loads no env file, nothing runs migrations", async () => {
     const scripts = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")).scripts as Record<string, string>;
-    expect(scripts.dev).toContain(".env.local");
+    expect(scripts.dev).toContain("--env-file-if-exists=.env ");
     expect(scripts.start).not.toMatch(/env-file|\.env/);
     expect(scripts.build).not.toMatch(/env|migrate|db:/);
     for (const name of ["dev", "start", "build"]) expect(scripts[name]).not.toMatch(/migrate/);
