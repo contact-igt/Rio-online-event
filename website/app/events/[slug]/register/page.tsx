@@ -65,7 +65,26 @@ export default async function RegisterPage({ params, searchParams }: { params: P
             {!open && !consentUnavailable && <div className="card-soft p-5"><h2 className="text-2xl font-bold">{reg.closed.title.ta}<span lang="en" className="block text-rio-slate">{reg.closed.title.en}</span></h2><p className="mt-2"><Bilingual m={reg.closed.body} /></p></div>}
             {elsewhere && <div className="card-soft p-5"><p className="font-semibold text-rio-navy">You have a saved draft for another competition: {elsewhere.event.nameEn}.<span lang="ta" className="block">வேறு போட்டிக்கான வரைவு உங்களிடம் உள்ளது: {elsewhere.event.nameTa}.</span></p><Link href={`/events/${elsewhere.event.slug}/register`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">Open that draft / அந்த வரைவைத் திற</Link></div>}
             {!view && <RecoveryForm event={event.slug} />}
-            {open && consent && questionSet && (!view || editable) &&<div className="card p-5 sm:p-7"><div className="flex items-start gap-4"><span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rio-blush text-rio-rose"><Icon name="edit" className="h-7 w-7" /></span><div><h2 className="text-2xl font-bold">{(view ? reg.form.editTitle : reg.title).ta} <span lang="en">/ {(view ? reg.form.editTitle : reg.title).en}</span></h2><p className="text-rio-slate"><Bilingual m={reg.form.intro} /></p></div></div><div className="mt-5"><RegistrationForm key={view?.reference ?? "new"} event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }} questions={questionSet.questions} consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }} draft={draft} /></div></div>}
+            {open && consent && questionSet && (!view || editable) && (
+              <div className="card rounded-3xl border border-slate-200/90 p-5 sm:p-8 shadow-sm">
+                <div className="flex items-center gap-4 border-b border-rio-navy/10 pb-5">
+                  <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rio-blush text-rio-rose shadow-xs">
+                    <Icon name="edit" className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-rio-navy">
+                      {(view ? reg.form.editTitle : reg.title).ta} <span lang="en" className="font-semibold text-base sm:text-xl text-rio-slate">/ {(view ? reg.form.editTitle : reg.title).en}</span>
+                    </h2>
+                    <p className="text-rio-slate text-xs sm:text-sm mt-0.5">
+                      <Bilingual m={reg.form.intro} />
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <RegistrationForm key={view?.reference ?? "new"} event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }} questions={questionSet.questions} consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }} draft={draft} />
+                </div>
+              </div>
+            )}
             {view && !editable && <p className="font-semibold text-rio-navy">This draft can no longer be edited. / இந்த வரைவை இனி திருத்த முடியாது.</p>}
             {view && <section className="card p-4 sm:p-6"><h2 className="text-xl font-bold">Next steps / அடுத்த படிகள்</h2><p className="mt-2 text-rio-slate">Video upload and final submission will be available in a later stage. / வீடியோ பதிவேற்றமும் இறுதி சமர்ப்பிப்பும் அடுத்த கட்டத்தில் கிடைக்கும்.</p></section>}
             {!view && remote.questionSet === null && <p className="rounded-2xl bg-rio-mist p-4 text-rio-slate">Questions are not published for this competition yet. / இந்தப் போட்டிக்கான கேள்விகள் இன்னும் வெளியிடப்படவில்லை.</p>}

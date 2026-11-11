@@ -116,12 +116,12 @@ describe.each(dialects)("%s admin dashboard and settings", (dialect: Dialect) =>
   });
 
   describe("GET /api/v1/admin/dashboard", () => {
-    it("shows the six seeded competitions and zero everywhere else on an empty database", async () => {
+    it("shows the four seeded competitions and zero everywhere else on an empty database", async () => {
       const admin = await signIn("admin");
       await sql("UPDATE staff_users SET active = 0 WHERE role = 'judge'");
       const { status, body } = await call("/api/v1/admin/dashboard", { who: admin });
       expect(status).toBe(200);
-      expect(body.competitions).toEqual({ total: 6, active: 6 });
+      expect(body.competitions).toEqual({ total: 4, active: 4 });
       expect(body.registrations).toEqual({ total: 0, draft: 0, finalized: 0, held: 0, withdrawn: 0, rejected: 0 });
       expect(body.judges).toEqual({ active: 0 });
       expect(body.recent).toEqual([]);
