@@ -3,13 +3,14 @@
 import { useActionState, useState } from "react";
 import { setPasswordAction } from "@/app/staff/set-password/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
+import { WEAK_REASONS } from "@/lib/staff/password-setup";
 
 // Choose a password. The passwords are sent only to the server action (and from there to the API); never put in a URL or shown again after an error.
 
 const E = {
   invalid: "Fill in all three fields.",
   mismatch: "The two new passwords are not the same.",
-  weak: "This password was not accepted. Use at least 12 characters and avoid common passwords, then try again.",
+  weak: "This new password was not accepted.",
   current: "The current password is incorrect.",
   tooMany: "Too many attempts. Wait a few minutes and try again.",
   unavailable: "Not possible right now. Try again.",
@@ -34,7 +35,9 @@ export function SetPasswordForm() {
           New password <span lang="ta" className="font-medium text-rio-slate">/ புதிய கடவுச்சொல்</span>
         </label>
         <input id="new-password" name="password" type={field} autoComplete="new-password" minLength={12} maxLength={128} aria-describedby="password-help" {...common} className="field mt-2" />
-        <p id="password-help" className="mt-1 text-sm text-rio-slate">At least 12 characters.</p>
+        <p id="password-help" className="mt-1 text-sm text-rio-slate">
+          12 to 128 characters, at least 5 different characters, no space at the start or end. It must not contain the name part of your e-mail address, be a commonly used password, or be your current password.
+        </p>
       </div>
       <div>
         <label htmlFor="confirm-password" className="block font-semibold text-rio-navy">
@@ -47,9 +50,16 @@ export function SetPasswordForm() {
         Show the passwords
       </label>
       {state?.error && (
-        <p role="alert" className="font-semibold text-rio-error">
-          {E[state.error]}
-        </p>
+        <div role="alert" className="font-semibold text-rio-error">
+          <p>{E[state.error]}</p>
+          {state.error === "weak" && (
+            <ul className="mt-1 list-disc pl-5">
+              {(state.reasons?.length ? state.reasons.map((r) => WEAK_REASONS[r]) : ["Check the rules under the new password and try again."]).map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       <SubmitButton idle={{ en: "Save password", ta: "கடவுச்சொல்லைச் சேமி" }} busy={{ en: "Saving…", ta: "சேமிக்கிறது…" }} />
     </form>

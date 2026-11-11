@@ -56,8 +56,21 @@ describe("setPasswordAction", () => {
     expect(await setPasswordAction(undefined, form({ ...good, confirm: "different-password" }))).toEqual({ error: "mismatch" });
     expect(h.calls).toEqual([]);
   });
+  it("a refused new password reports the API's actual reasons, not only a generic message, and relays nothing", async () => {
+    h.reply = { status: 422, body: { error: { code: "weak_password", problems: ["contains the e-mail name", "same as the current password"] } }, setCookies: ["rio_staff=x"] };
+    expect(await setPasswordAction(undefined, form(good))).toEqual({ error: "weak", reasons: ["contains the e-mail name", "same as the current password"] });
+    expect(h.relayed).toEqual([]);
+  });
+  it("an expired session on save goes back to sign-in instead of showing a password error", async () => {
+    h.reply = { status: 401, body: { error: { code: "unauthenticated" } }, setCookies: [] };
+    expect(await redirectTo(setPasswordAction(undefined, form(good)))).toBe("/staff/login");
+    expect(h.relayed).toEqual([]);
+  });
+  it("an unreachable API is a connection problem, not a password problem", async () => {
+    h.reply = { status: 0, body: null, setCookies: [] };
+    expect(await setPasswordAction(undefined, form(good))).toEqual({ error: "unavailable" });
+  });
   it.each([
-    [422, "weak_password", "weak"],
     [403, "current_password_incorrect", "current"],
     [429, "rate_limited", "tooMany"],
     [500, undefined, "unavailable"],
