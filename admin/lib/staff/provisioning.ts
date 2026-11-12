@@ -150,7 +150,7 @@ export async function provisionJudgeFlow(deps: ProvisionDeps, raw: { email: unkn
 
 // ---- resetting a judge's password ------------------------------------------------------------------------------------------------------------
 
-export type ResetCode = "invalid" | "notAllowed" | "disabled" | "notConfigured" | "tooMany" | "notFound" | "unavailable";
+export type ResetCode = "invalid" | "sessionExpired" | "notAllowed" | "originNotAllowed" | "disabled" | "notConfigured" | "tooMany" | "notFound" | "connectionLost" | "serverError" | "unavailable";
 export type ResetResult = { ok: true; password: string } | { ok: false; code: ResetCode };
 
 export type ResetDeps = {

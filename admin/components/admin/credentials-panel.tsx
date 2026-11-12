@@ -11,8 +11,9 @@ import { staff } from "@/lib/staff/messages";
 const M = staff.judges.credentials;
 const SHOWN_FOR_MS = 5 * 60_000;
 
-export function CredentialsPanel({ email, password, onDone }: { email: string | null; password: string; onDone: () => void }) {
+export function CredentialsPanel({ email, password, onDone, masked = false }: { email: string | null; password: string; onDone: () => void; masked?: boolean }) {
   const [note, setNote] = useState<string | null>(null);
+  const [shown, setShown] = useState(!masked);
 
   useEffect(() => {
     const t = setTimeout(onDone, SHOWN_FOR_MS);
@@ -43,9 +44,16 @@ export function CredentialsPanel({ email, password, onDone }: { email: string | 
       )}
       <div>
         <p className="text-sm font-semibold text-rio-navy">{M.password}</p>
-        <code translate="no" className="mt-1 block select-all break-all rounded-xl bg-white px-3 py-2 font-mono text-lg font-bold tracking-wide text-rio-navy">
-          {password}
-        </code>
+        <div className="mt-1 flex items-center gap-2">
+          <code translate="no" className="block min-w-0 flex-1 select-all break-all rounded-xl bg-white px-3 py-2 font-mono text-lg font-bold tracking-wide text-rio-navy">
+            {shown ? password : "•".repeat(Math.min(password.length, 24))}
+          </code>
+          {masked && (
+            <button type="button" onClick={() => setShown((v) => !v)} aria-pressed={shown} className="btn btn-outline min-h-11 shrink-0 !px-4 !py-1 text-sm">
+              {shown ? "Hide" : "Show"}
+            </button>
+          )}
+        </div>
       </div>
       <p className="text-sm font-semibold text-rio-navy">{M.once}</p>
       <div className="flex flex-wrap gap-2">

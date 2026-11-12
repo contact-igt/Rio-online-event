@@ -41,6 +41,12 @@ if (db && config.database) {
     logger.warn("database_unreachable_at_startup");
   }
 }
+// A MySQL server closes idle connections (wait_timeout, 60 s on the current host) and a fresh one costs about a second, so the first request after
+// a pause was slow (measured: 1311 ms against 264 ms with warm connections). Three trivial pings every 30 s keep a few pooled connections open.
+// SELECT 1 only; a failed ping is ignored because the pool simply reconnects on the next real query.
+const KEEP_WARM = 3;
+const keepWarm = db && config.database?.dialect === "mysql" ? setInterval(() => { for (let i = 0; i < KEEP_WARM; i++) void db.query("SELECT 1").catch(() => undefined); }, 30_000) : undefined;
+keepWarm?.unref();
 const server = createServer(createApp({ config, logger, state, ...(db ? { db } : {}) }));
 
 // Longer than the proxy's idle timeout (Railway and most load balancers use 60 s), so the proxy never reuses a socket we just closed.
@@ -48,7 +54,7 @@ server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
 server.requestTimeout = 30_000;
 
-const shutdown = createShutdown({ server, state, logger, timeoutMs: config.shutdownTimeoutMs, onClosed: async () => void (await db?.close()) });
+const shutdown = createShutdown({ server, state, logger, timeoutMs: config.shutdownTimeoutMs, onClosed: async () => { if (keepWarm) clearInterval(keepWarm); await db?.close(); } });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown(signal).then((result) => process.exit(result === "closed" ? 0 : 1)));
 }

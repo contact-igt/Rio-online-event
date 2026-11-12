@@ -66,7 +66,7 @@ describe("judge actions", () => {
   });
 
   it("the password is never logged, stored, put in a URL or e-mailed, and no account is created while a page renders", () => {
-    const touching = ["lib/staff/provisioning.ts", "app/admin/judges/actions.ts", "components/admin/credentials-panel.tsx", "components/admin/provision-judge-form.tsx", "components/admin/judge-reset-button.tsx"];
+    const touching = ["lib/staff/provisioning.ts", "app/admin/judges/actions.ts", "components/admin/credentials-panel.tsx", "components/admin/provision-judge-form.tsx", "components/admin/judge-dialogs.tsx"];
     for (const p of touching) expect(code(p), p).not.toMatch(/console\.|localStorage|sessionStorage|indexedDB|document\.cookie|sendMail|nodemailer|resend/i);
     expect(code("lib/staff/provisioning.ts")).not.toMatch(/Math\.random/); // the password comes from Web Crypto only
     expect(code("app/admin/judges/page.tsx")).not.toMatch(/createUser|createProvisionDeps|createResetDeps|provisionJudgeFlow|resetJudgePasswordFlow|generatePassword/);

@@ -29,12 +29,26 @@ export const setActiveSchema = z.strictObject({
   active: z.boolean(),
 });
 
+export const updateJudgeSchema = provisionJudgeSchema;
+
 export const assignJudgeSchema = z.strictObject({
   slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/u).max(60),
   judgeId: z.number().int().positive(),
 });
 
 const n = (v: unknown): number => Number(v ?? 0);
+
+export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
+
+export async function listDeletedJudges(db: Queryable): Promise<{ judges: DeletedJudgeRow[] }> {
+  const result = await db.query<{ id: unknown; display_name: string; email: string; judge_code: string; deleted_at: unknown }>(
+    `SELECT u.id, u.display_name, u.email, p.judge_code, u.deleted_at
+     FROM staff_users u JOIN judge_profiles p ON p.user_id = u.id
+     WHERE u.role = 'judge' AND u.deleted_at IS NOT NULL
+     ORDER BY u.deleted_at DESC, u.id DESC`,
+  );
+  return { judges: result.rows.map((r) => ({ id: n(r.id), name: r.display_name, email: r.email, judgeCode: r.judge_code, deletedAt: asDate(r.deleted_at).toISOString() })) };
+}
 
 export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }> {
   const result = await db.query<{
@@ -64,7 +78,7 @@ export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }>
       (SELECT COUNT(*) FROM scores s WHERE s.judge_id = u.id AND s.status = 'final') AS final_count
     FROM staff_users u
     JOIN judge_profiles p ON p.user_id = u.id
-    WHERE u.role = 'judge'
+    WHERE u.role = 'judge' AND u.deleted_at IS NULL
     ORDER BY u.created_at DESC, u.id DESC
   `);
 
@@ -82,7 +96,7 @@ export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }>
       drafts: n(r.drafts),
       final,
       progress: assigned > 0 ? Math.round((final / assigned) * 100) : null,
-      lastLoginAt: asDate(r.last_login_at)?.toISOString() ?? null,
+      lastLoginAt: r.last_login_at == null ? null : asDate(r.last_login_at).toISOString(),
       createdAt: asDate(r.created_at)?.toISOString() ?? new Date().toISOString(),
     };
   });
@@ -176,7 +190,7 @@ export async function setJudgeActive(
   input: { judgeId: number; active: boolean },
 ): Promise<{ ok: true }> {
   const target = await db.query<{ id: unknown; active: unknown }>(
-    "SELECT id, active FROM staff_users WHERE id = ? AND role = 'judge'",
+    "SELECT id, active FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NULL",
     [input.judgeId],
   );
   if (target.rows.length === 0) {
@@ -201,6 +215,68 @@ export async function setJudgeActive(
   return { ok: true };
 }
 
+export async function updateJudge(
+  db: DatabaseAdapter,
+  now: Date,
+  actor: { staffId: number; requestId: string },
+  input: { judgeId: number; email: string; displayName: string },
+): Promise<{ ok: true; name: string; email: string }> {
+  const target = await db.query<{ id: unknown }>(
+    "SELECT id FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NULL",
+    [input.judgeId],
+  );
+  if (target.rows.length === 0) throw new AppError(404, "not_found", "Judge not found.");
+
+  const email = input.email.trim().toLowerCase();
+  const name = input.displayName.trim();
+  const clash = await db.query<{ id: unknown }>("SELECT id FROM staff_users WHERE email = ? AND id <> ?", [email, input.judgeId]);
+  if (clash.rows.length > 0) throw new AppError(409, "duplicate_email", "An account with this email already exists.");
+
+  await db.transaction(async (tx) => {
+    await tx.query("UPDATE staff_users SET email = ?, display_name = ? WHERE id = ? AND role = 'judge'", [email, name, input.judgeId]);
+    await writeAudit(tx, now, {
+      actorType: "staff",
+      actorStaffId: actor.staffId,
+      action: "judge.update",
+      entityType: "staff_user",
+      entityId: input.judgeId,
+      requestId: actor.requestId,
+    });
+  });
+
+  return { ok: true, name, email };
+}
+
+/** Soft delete: the row, its assignments and its scores stay for the record; the account just stops working and leaves the roster. */
+export async function deleteJudge(
+  db: DatabaseAdapter,
+  now: Date,
+  actor: { staffId: number; requestId: string },
+  input: { judgeId: number },
+): Promise<{ ok: true }> {
+  const target = await db.query<{ deleted_at: unknown }>(
+    "SELECT deleted_at FROM staff_users WHERE id = ? AND role = 'judge'",
+    [input.judgeId],
+  );
+  if (target.rows.length === 0) throw new AppError(404, "not_found", "Judge not found.");
+  if (target.rows[0]!.deleted_at != null) return { ok: true }; // already deleted: repeating is harmless
+
+  await db.transaction(async (tx) => {
+    await tx.query("UPDATE staff_users SET active = 0, deleted_at = ? WHERE id = ? AND role = 'judge' AND deleted_at IS NULL", [now, input.judgeId]);
+    await tx.query("UPDATE staff_sessions SET revoked_at = ? WHERE staff_id = ? AND revoked_at IS NULL", [now, input.judgeId]);
+    await writeAudit(tx, now, {
+      actorType: "staff",
+      actorStaffId: actor.staffId,
+      action: "judge.delete",
+      entityType: "staff_user",
+      entityId: input.judgeId,
+      requestId: actor.requestId,
+    });
+  });
+
+  return { ok: true };
+}
+
 export async function resetJudgePassword(
   db: DatabaseAdapter,
   now: Date,
@@ -209,7 +285,7 @@ export async function resetJudgePassword(
   cost: Argon2Cost,
 ): Promise<{ ok: true; generatedPassword: string }> {
   const target = await db.query<{ id: unknown }>(
-    "SELECT id FROM staff_users WHERE id = ? AND role = 'judge'",
+    "SELECT id FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NULL",
     [input.judgeId],
   );
   if (target.rows.length === 0) {
@@ -301,3 +377,43 @@ export async function assignJudgeToCompetition(
   return { ok: true, added };
 }
 
+/** Brings a soft-deleted judge back to the roster. The account stays switched OFF: the Super Admin reactivates it on purpose. */
+export async function restoreJudge(db: DatabaseAdapter, now: Date, actor: { staffId: number; requestId: string }, input: { judgeId: number }): Promise<{ ok: true }> {
+  await db.transaction(async (tx) => {
+    const done = await tx.query("UPDATE staff_users SET deleted_at = NULL WHERE id = ? AND role = 'judge' AND deleted_at IS NOT NULL", [input.judgeId]);
+    if (done.affectedRows !== 1) throw new AppError(404, "not_found", "Judge not found.");
+    await writeAudit(tx, now, { actorType: "staff", actorStaffId: actor.staffId, action: "judge.restored", entityType: "staff_user", entityId: input.judgeId, requestId: actor.requestId });
+  });
+  return { ok: true };
+}
+
+/**
+ * Permanent delete of a soft-deleted judge who left no history. Refused when anything refers to the account: assignments, scores, anything the
+ * judge did (every sign-in is an audit row that names the account, and the audit log is append-only), reviews decided, sets, settings or winners
+ * they touched. Only the account, its profile and its sessions are removed. The audit row records the id and nothing personal.
+ */
+export async function purgeJudge(db: DatabaseAdapter, now: Date, actor: { staffId: number; requestId: string }, input: { judgeId: number }): Promise<{ ok: true }> {
+  const id = input.judgeId;
+  const target = await db.query<{ id: unknown }>("SELECT id FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NOT NULL", [id]);
+  if (target.rows.length === 0) throw new AppError(404, "not_found", "Judge not found.");
+  const refs = (await db.query<{ n: unknown }>(
+    `SELECT (SELECT COUNT(*) FROM judge_assignments WHERE judge_id = ? OR assigned_by = ?)
+          + (SELECT COUNT(*) FROM scores WHERE judge_id = ? OR unlocked_by = ?)
+          + (SELECT COUNT(*) FROM audit_log WHERE actor_staff_id = ?)
+          + (SELECT COUNT(*) FROM winners WHERE approved_by = ?)
+          + (SELECT COUNT(*) FROM duplicate_reviews WHERE decided_by = ?)
+          + (SELECT COUNT(*) FROM question_sets WHERE created_by = ? OR published_by = ?)
+          + (SELECT COUNT(*) FROM event_settings WHERE updated_by = ?) AS n`,
+    [id, id, id, id, id, id, id, id, id, id],
+  )).rows[0];
+  if (n(refs?.n) > 0) throw new AppError(409, "judge_purge_blocked", "This judge has assignments, scores or recorded activity, so the account cannot be permanently deleted.");
+
+  await db.transaction(async (tx) => {
+    await tx.query("DELETE FROM staff_sessions WHERE staff_id = ?", [id]);
+    await tx.query("DELETE FROM judge_profiles WHERE user_id = ?", [id]);
+    const gone = await tx.query("DELETE FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NOT NULL", [id]);
+    if (gone.affectedRows !== 1) throw new AppError(404, "not_found", "Judge not found.");
+    await writeAudit(tx, now, { actorType: "staff", actorStaffId: actor.staffId, action: "judge.purged", entityType: "staff_user", entityId: id, requestId: actor.requestId });
+  });
+  return { ok: true };
+}

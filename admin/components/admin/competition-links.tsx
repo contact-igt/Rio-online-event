@@ -20,7 +20,7 @@ export function CompetitionLinks({ competitions }: { competitions: Competition[]
     );
   }
   return (
-    <ul className="mt-4 grid gap-4 sm:grid-cols-2">
+    <ul className="mt-4 grid gap-3 sm:grid-cols-2">
       {competitions.map((c) => {
         const iconName = EVENT_ICON[c.slug] ?? "star";
         const isPublished = Boolean(c.published && c.published.questionCount > 0);
@@ -28,17 +28,21 @@ export function CompetitionLinks({ competitions }: { competitions: Competition[]
           <li key={c.slug}>
             <Link
               href={`/admin/events/${c.slug}/questions`}
-              className="group flex h-full flex-col justify-between rounded-2xl border-2 border-rio-navy/10 bg-white p-5 shadow-sm transition hover:border-rio-rose hover:bg-rio-blush/20 hover:shadow-md"
+              className="group flex h-full min-h-[170px] flex-col justify-between rounded-2xl border border-rio-navy/10 bg-white p-4 shadow-sm transition hover:border-rio-rose hover:bg-rio-blush/20 hover:shadow-md"
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="grid size-11 place-items-center rounded-xl bg-rio-mist text-rio-navy transition-colors group-hover:bg-rio-rose group-hover:text-white">
-                    <Icon name={iconName} className="h-6 w-6" />
+                  <span className="grid size-10 place-items-center rounded-xl bg-rio-mist text-rio-navy transition-colors group-hover:bg-rio-rose group-hover:text-white">
+                    <Icon name={iconName} className="h-5 w-5" />
                   </span>
                   {isPublished ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
                       <Icon name="check" className="h-3.5 w-3.5" />
                       v{c.published!.version} Published ({c.published!.questionCount} Qs)
+                    </span>
+                  ) : c.draft ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
+                      v{c.draft.version} Draft ({c.draft.questionCount} Qs)
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-rio-slate">

@@ -1,9 +1,9 @@
-import { StaffBar } from "@/components/staff/staff-bar";
+import { JudgeHeader } from "@/components/judge/judge-header";
 
 export default function JudgeLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="wash min-h-[60vh]">
-      <StaffBar role="judge" />
+    <div className="wash min-h-dvh">
+      <JudgeHeader />
       {children}
     </div>
   );

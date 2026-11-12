@@ -80,7 +80,7 @@ export async function listAssignedEntries(db: Queryable, judgeId: number): Promi
     JOIN submissions s ON s.id = a.submission_id
     JOIN events e ON e.id = s.event_id
     LEFT JOIN scores sc ON sc.judge_id = a.judge_id AND sc.submission_id = s.id
-    WHERE a.judge_id = ?
+    WHERE a.judge_id = ? AND s.deleted_at IS NULL
     ORDER BY s.id ASC
     `,
     [judgeId],
@@ -139,7 +139,7 @@ export async function getEntryForReview(db: Queryable, judgeId: number, entryCod
     JOIN submissions s ON s.id = a.submission_id
     JOIN events e ON e.id = s.event_id
     LEFT JOIN scores sc ON sc.judge_id = a.judge_id AND sc.submission_id = s.id
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [judgeId, entryCode],
   );
@@ -230,7 +230,7 @@ export async function mintPlaybackUrl(
     FROM judge_assignments a
     JOIN submissions s ON s.id = a.submission_id
     JOIN video_uploads v ON v.submission_id = s.id AND v.status = 'verified'
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [actor.judgeId, entryCode],
   );
@@ -269,7 +269,7 @@ export async function saveScore(
     SELECT s.id
     FROM judge_assignments a
     JOIN submissions s ON s.id = a.submission_id
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [actor.judgeId, entryCode],
   );

@@ -40,10 +40,10 @@
   --color-rio-line: var(--rio-line);
   --color-rio-error: var(--rio-error);
   --color-rio-ok: var(--rio-ok);
-  --font-display: var(--font-baloo), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-hind), ui-sans-serif, system-ui, sans-serif;
-  /* Section headings: Anek Tamil covers Tamil letters only, so any English in a heading stays in Baloo. */
-  --font-heading: var(--font-anek), var(--font-baloo), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-mulish), var(--font-montserrat), var(--font-noto-tamil), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-montserrat), var(--font-noto-tamil), ui-sans-serif, system-ui, sans-serif;
+  --font-tamil: var(--font-noto-tamil), var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-mulish), var(--font-montserrat), var(--font-noto-tamil), ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -54,9 +54,16 @@ body {
   background: #fff8fb;
   color: var(--rio-ink);
   font-family: var(--font-body);
+  font-weight: 500;
   font-size: 1rem;
   /* Tamil script has tall ascenders and deep descenders; keep generous leading and zero tracking. */
   line-height: 1.7;
+  letter-spacing: 0;
+}
+
+/* Keep Tamil text optically balanced with the Montserrat/Mulish English system. */
+[lang="ta"]:not(html) {
+  font-family: var(--font-tamil);
   letter-spacing: 0;
 }
 

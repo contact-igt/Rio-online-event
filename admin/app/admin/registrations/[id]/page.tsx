@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { RegistrationEditForm } from "@/components/admin/registration-edit-form";
+import { RegistrationVideoPlayer } from "@/components/admin/registration-video-player";
 import { Icon } from "@/components/ui/icon";
 import { loadRegistration } from "@/lib/admin/api";
 import { formatIst } from "@/lib/admin/format";
@@ -7,6 +9,9 @@ import { requireStaff } from "@/lib/staff/auth";
 
 export const metadata = { title: "Registration · Admin", robots: { index: false } };
 export const dynamic = "force-dynamic";
+
+// Same condition as the media-src rule in next.config.ts: the signed link is on the R2 host, which the page may load video from only when playback is switched on.
+const playbackReady = process.env.RIO_PLAYBACK_ENABLED === "yes" && /^[0-9a-f]{32}$/i.test(process.env.R2_ACCOUNT_ID ?? "");
 
 const STATUS: Record<string, string> = { draft: "Draft", held: "Held", finalized: "Finalized", withdrawn: "Withdrawn", rejected: "Rejected" };
 const VIDEO_TYPE: Record<string, string> = { "video/mp4": "MP4", "video/quicktime": "MOV", "video/webm": "WebM" };
@@ -23,12 +28,15 @@ function Row({ label, ta, children }: { label: string; ta?: string; children: Re
 
 // One entry from GET /admin/registrations/:entryCode (the route parameter is the entry code). Opening it is written to the audit log by the API.
 // Answers are shown against the question version the entry was created with.
-export default async function AdminRegistrationPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminRegistrationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ mode?: string }> }) {
   await requireStaff("admin");
   const { id: entryCode } = await params;
+  const wantsEdit = (await searchParams)?.mode === "edit";
   if (!/^[A-Z0-9]{6,16}$/.test(entryCode)) notFound();
   const loaded = await loadRegistration(entryCode);
   if (!loaded.ok && loaded.reason === "not_found") notFound();
+  // Edit mode is the same page with ?mode=edit, for a draft only. Anything else stays read-only.
+  const editing = wantsEdit && loaded.ok && loaded.data.status === "draft";
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-[clamp(1.5rem,5vw,3rem)] sm:px-6 lg:px-8">
@@ -48,6 +56,8 @@ export default async function AdminRegistrationPage({ params }: { params: Promis
             <span className="block text-[0.6em] font-bold text-rio-slate">{loaded.data.competition.nameEn} / <span lang="ta">{loaded.data.competition.nameTa}</span></span>
           </h1>
           <p className="mt-3 rounded-2xl bg-rio-mist p-3 text-sm">Opening this page is recorded in the audit log. Contact details are for running the competition only.</p>
+          {wantsEdit && !editing && <p role="status" className="mt-3 rounded-2xl border border-rio-navy/15 bg-white p-3 text-sm font-semibold text-rio-navy">Only draft registrations can be edited, so this one is shown read-only.</p>}
+          {editing && <RegistrationEditForm entryCode={loaded.data.entryCode} initial={{ childName: loaded.data.child.name, childAge: loaded.data.child.age, guardianName: loaded.data.guardian.name, guardianMobile: loaded.data.guardian.mobile, guardianEmail: loaded.data.guardian.email }} />}
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="card min-w-0 p-4 sm:p-6">
@@ -67,6 +77,13 @@ export default async function AdminRegistrationPage({ params }: { params: Promis
                     {loaded.data.video.uploaded
                       ? `Uploaded · ${((loaded.data.video.bytes ?? 0) / (1024 * 1024)).toFixed(1)} MB · ${VIDEO_TYPE[loaded.data.video.contentType ?? ""] ?? "video"} · ${formatIst(loaded.data.video.uploadedAt)}`
                       : "Not uploaded yet"}
+                    {loaded.data.video.uploaded && (playbackReady ? (
+                      <RegistrationVideoPlayer entryCode={loaded.data.entryCode} />
+                    ) : (
+                      <span className="mt-2 block rounded-xl border-l-4 border-rio-pink bg-rio-blush p-3 text-sm font-medium text-rio-navy">
+                        Video playback is switched off for this Admin site. Set <code translate="no">RIO_PLAYBACK_ENABLED=yes</code> and <code translate="no">R2_ACCOUNT_ID</code> in the Admin settings and restart it.
+                      </span>
+                    ))}
                   </Row>
                 )}
                 <Row label="Question version">v{loaded.data.questionSetVersion}</Row>

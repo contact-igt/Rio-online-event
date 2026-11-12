@@ -141,27 +141,40 @@ async function questionsOf(q: Queryable, setId: number): Promise<AdminQuestion[]
   return (await q.query<Row>(`SELECT ${COLUMNS} FROM questions WHERE question_set_id = ? ORDER BY position`, [setId])).rows.map(toQuestion);
 }
 
-async function summaries(q: Queryable, eventId: number): Promise<SetSummary[]> {
-  const sets = (await q.query<SetRow>(`SELECT ${SET_COLUMNS} FROM question_sets WHERE event_id = ? ORDER BY version DESC`, [eventId])).rows;
-  const counts = new Map((await q.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM questions WHERE question_set_id IN (SELECT id FROM question_sets WHERE event_id = ?) GROUP BY question_set_id", [eventId])).rows.map((r) => [Number(r.id), Number(r.n)]));
-  // Only counts: no entry, child or guardian detail is read.
-  const entries = new Map((await q.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM submissions WHERE event_id = ? GROUP BY question_set_id", [eventId])).rows.map((r) => [Number(r.id), Number(r.n)]));
-  return sets.map((s) => ({
+const toSummaries = (sets: SetRow[], counts: Map<number, number>, entries: Map<number, number>): SetSummary[] =>
+  sets.map((s) => ({
     id: Number(s.id), version: Number(s.version), status: s.status, createdAt: iso(s.created_at)!, publishedAt: iso(s.published_at), retiredAt: iso(s.retired_at),
     questionCount: counts.get(Number(s.id)) ?? 0, entryCount: entries.get(Number(s.id)) ?? 0,
   }));
+const countMap = (rows: { id: number | string; n: number | string }[]) => new Map(rows.map((r) => [Number(r.id), Number(r.n)]));
+
+// The three reads do not depend on each other, so they are issued together (one database round trip of waiting instead of three).
+async function summaries(q: Queryable, eventId: number): Promise<SetSummary[]> {
+  const [sets, counts, entries] = await Promise.all([
+    q.query<SetRow>(`SELECT ${SET_COLUMNS} FROM question_sets WHERE event_id = ? ORDER BY version DESC`, [eventId]),
+    q.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM questions WHERE question_set_id IN (SELECT id FROM question_sets WHERE event_id = ?) GROUP BY question_set_id", [eventId]),
+    // Only counts: no entry, child or guardian detail is read.
+    q.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM submissions WHERE event_id = ? GROUP BY question_set_id", [eventId]),
+  ]);
+  return toSummaries(sets.rows, countMap(counts.rows), countMap(entries.rows));
 }
 
 export type CompetitionRow = { slug: string; nameTa: string; nameEn: string; published: SetSummary | null; draft: SetSummary | null };
 
+// All competitions in four queries issued together. It used to run three queries per competition one after another (13 round trips).
 export async function listCompetitions(db: Queryable): Promise<CompetitionRow[]> {
-  const events = (await db.query<{ id: number | string; slug: string; name_ta: string; name_en: string }>("SELECT id, slug, name_ta, name_en FROM events ORDER BY display_order, id")).rows;
-  const out: CompetitionRow[] = [];
-  for (const e of events) {
-    const sets = await summaries(db, Number(e.id));
-    out.push({ slug: e.slug, nameTa: e.name_ta, nameEn: e.name_en, published: sets.find((s) => s.status === "published") ?? null, draft: sets.find((s) => s.status === "draft") ?? null });
-  }
-  return out;
+  const [events, sets, counts, entries] = await Promise.all([
+    db.query<{ id: number | string; slug: string; name_ta: string; name_en: string }>("SELECT id, slug, name_ta, name_en FROM events ORDER BY display_order, id"),
+    db.query<SetRow>(`SELECT ${SET_COLUMNS} FROM question_sets ORDER BY version DESC`),
+    db.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM questions GROUP BY question_set_id"),
+    db.query<{ id: number | string; n: number | string }>("SELECT question_set_id AS id, COUNT(*) AS n FROM submissions GROUP BY question_set_id"),
+  ]);
+  const countsBySet = countMap(counts.rows);
+  const entriesBySet = countMap(entries.rows);
+  return events.rows.map((e) => {
+    const own = toSummaries(sets.rows.filter((row) => Number(row.event_id) === Number(e.id)), countsBySet, entriesBySet);
+    return { slug: e.slug, nameTa: e.name_ta, nameEn: e.name_en, published: own.find((x) => x.status === "published") ?? null, draft: own.find((x) => x.status === "draft") ?? null };
+  });
 }
 
 export async function listSets(db: Queryable, slug: string) {

@@ -69,7 +69,7 @@ export function createApp(deps: AppDeps): Express {
     const auth = authDeps(deps.db, config.auth, deps.now);
     const video = deps.video === undefined ? videoStoreFor(config) : deps.video;
     app.use("/api/v1/staff", staffRouter(auth));
-    app.use("/api/v1/admin", adminRouter(auth));
+    app.use("/api/v1/admin", adminRouter(auth, video));
     app.use("/api/v1/judge", judgeRouter(auth, video));
     app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now, video)));
     app.use("/api/v1", resultsRouter(deps.db, deps.now ?? (() => new Date())));

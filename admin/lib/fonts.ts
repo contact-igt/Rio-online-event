@@ -1,28 +1,26 @@
-import { Anek_Tamil, Baloo_Thambi_2, Hind_Madurai } from "next/font/google";
+import { Montserrat, Mulish, Noto_Sans_Tamil } from "next/font/google";
 
-// Self-hosted by next/font at build time; the website and the admin panel use the same three faces.
-const baloo = Baloo_Thambi_2({
-  subsets: ["tamil", "latin"],
+// Self-hosted by next/font at build time. Montserrat matches the hospital website's English UI; Mulish keeps headings calm and clinical;
+// Noto Sans Tamil gives Tamil the same clean, readable institutional tone.
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+
+const mulish = Mulish({
+  subsets: ["latin"],
   weight: ["600", "700", "800"],
-  variable: "--font-baloo",
+  variable: "--font-mulish",
   display: "swap",
 });
 
-const hind = Hind_Madurai({
-  subsets: ["tamil", "latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-hind",
-  display: "swap",
-});
-
-// Tamil glyphs of section headings only (h2/h3): the Tamil subset, one weight, not preloaded. Latin text in a heading falls through to Baloo,
-// so the English font does not change.
-const anek = Anek_Tamil({
+const tamil = Noto_Sans_Tamil({
   subsets: ["tamil"],
-  weight: ["700"],
-  variable: "--font-anek",
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-noto-tamil",
   display: "swap",
-  preload: false,
 });
 
-export const fontVariables = `${baloo.variable} ${hind.variable} ${anek.variable}`;
+export const fontVariables = `${montserrat.variable} ${mulish.variable} ${tamil.variable}`;

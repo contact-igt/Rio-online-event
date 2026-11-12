@@ -1,97 +1,87 @@
 import type { Metadata } from "next";
-import { EntryList, type JudgeRow } from "@/components/judge/entry-list";
+import { AssignedEntries } from "@/components/judge/assigned-entries";
+import { RetryButton } from "@/components/judge/retry-button";
 import { Icon } from "@/components/ui/icon";
-import { events } from "@/lib/events";
 import { loadJudgeEntries } from "@/lib/judging/api";
 import { requireStaff } from "@/lib/staff/auth";
+import { staff } from "@/lib/staff/messages";
 
 export const metadata: Metadata = { title: "நடுவர் பக்கம் · Judge · Rio", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-export default async function JudgePage() {
-  await requireStaff("judge");
-  const entriesRes = await loadJudgeEntries();
+const M = staff.judge;
 
+function Stat({ label, value, note, tone }: { label: { ta: string; en: string }; value: number | null; note?: string; tone: string }) {
+  return (
+    <div className="card flex items-center justify-between gap-3 px-4 py-3">
+      <p className="min-w-0 leading-tight">
+        <span className={`block text-xs font-bold uppercase tracking-wide ${tone}`}>{label.en}</span>
+        <span lang="ta" className="block text-xs font-medium text-rio-slate">{label.ta}</span>
+        {note && <span className="mt-0.5 block text-xs text-rio-slate">{note}</span>}
+      </p>
+      <span className="font-display text-3xl font-bold leading-none text-rio-navy tabular-nums">{value ?? "–"}</span>
+    </div>
+  );
+}
+
+export default async function JudgePage() {
+  // The session check and the assignment list are independent round trips: they run together, and nothing renders unless the check passes.
+  const [, entriesRes] = await Promise.all([requireStaff("judge"), loadJudgeEntries()]);
+
+  // Counts come only from real rows. Assigned = Scored (final) + Pending (everything not final, drafts included), so the three always add up.
+  // When the list could not be loaded the figures are a dash, not a zero.
   const entries = entriesRes.ok ? entriesRes.data : [];
   const total = entries.length;
-  const completed = entries.filter((e) => e.score?.status === "final").length;
+  const scored = entries.filter((e) => e.score?.status === "final").length;
   const drafts = entries.filter((e) => e.score?.status === "draft").length;
-  const pending = total - completed;
-
-  const rows: JudgeRow[] = entries.map((e) => {
-    const event = events.find((ev) => ev.slug === e.competitionSlug);
-    return {
-      entry_id: e.entryCode,
-      entry_code: e.entryCode,
-      event_id: event?.number ?? 1,
-      score_status: e.score?.status ?? null,
-      my_marks: e.score?.marks ?? null,
-    };
-  });
+  const known = entriesRes.ok;
 
   return (
-    <section className="mx-auto w-full max-w-[900px] px-4 py-[clamp(1.5rem,5vw,3rem)] sm:px-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-[clamp(1.75rem,5vw,2.5rem)] font-extrabold text-rio-navy">
-          Judge Portal
-          <span lang="ta" className="block text-[0.6em] font-bold text-rio-slate">
-            நடுவர் பக்கம்
-          </span>
-        </h1>
-        <p className="text-rio-slate">
-          Review the assigned entries, watch the video, and submit your score (0 to 10).
-          <span lang="ta" className="mt-1 block font-medium">
-            ஒதுக்கப்பட்ட பதிவுகளைப் பார்த்து, வீடியோவை ஆய்வு செய்து மதிப்பெண் (0-10) வழங்குங்கள்.
-          </span>
-        </p>
+    <section className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <p lang="en" className="eyebrow">
+        <span aria-hidden="true" className="h-px w-8 bg-current" />
+        {M.workspace}
+      </p>
+      <h1 className="mt-2 text-[clamp(1.75rem,4vw,2rem)] font-bold leading-tight text-rio-navy">
+        <span lang="ta" className="block">{M.portal.ta}</span>
+        <span lang="en" className="mt-0.5 block text-base font-medium leading-snug text-rio-slate sm:text-lg">{M.portal.en}</span>
+      </h1>
+      <p className="mt-2 max-w-2xl text-sm text-rio-slate">
+        {M.workspaceIntro.en}
+        <span lang="ta" className="block font-medium">{M.workspaceIntro.ta}</span>
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <Stat label={M.statAssigned} value={known ? total : null} tone="text-rio-navy" />
+        <Stat label={M.statScored} value={known ? scored : null} tone="text-emerald-700" />
+        <Stat label={M.statPending} value={known ? total - scored : null} note={known && drafts > 0 ? `${drafts} draft${drafts === 1 ? "" : "s"} saved` : undefined} tone="text-amber-700" />
       </div>
 
-      {/* Progress Cards */}
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="card p-4">
-          <span className="text-xs uppercase tracking-wider text-rio-slate font-bold">Assigned</span>
-          <span className="mt-1 block font-display text-2xl font-bold text-rio-navy">{total}</span>
-        </div>
-        <div className="card p-4">
-          <span className="text-xs uppercase tracking-wider text-emerald-700 font-bold">Scored (Final)</span>
-          <span className="mt-1 block font-display text-2xl font-bold text-emerald-800">{completed}</span>
-        </div>
-        <div className="card col-span-2 p-4 sm:col-span-1">
-          <span className="text-xs uppercase tracking-wider text-amber-700 font-bold">Pending</span>
-          <span className="mt-1 block font-display text-2xl font-bold text-amber-800">
-            {pending} {drafts > 0 && <span className="text-sm font-sans font-medium text-rio-slate">({drafts} draft)</span>}
-          </span>
-        </div>
-      </div>
-
-      {/* Entry List */}
-      <div className="card mt-6 p-6">
-        <h2 className="text-lg font-bold text-rio-navy mb-4">
-          Assigned Entries <span lang="ta" className="text-sm font-semibold text-rio-slate">/ ஒதுக்கப்பட்ட பதிவுகள்</span>
+      <div className="card mt-5 p-4 sm:p-5">
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold leading-snug text-rio-navy">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rio-blush text-rio-rose"><Icon name="list" className="h-5 w-5" /></span>
+          <span><span lang="ta" className="block">ஒதுக்கப்பட்ட பதிவுகள்</span><span lang="en" className="block text-sm font-medium text-rio-slate">Assigned entries</span></span>
         </h2>
 
         {!entriesRes.ok && (
-          <p role="alert" className="flex items-start gap-3 rounded-2xl border border-rio-error/40 bg-white p-4 font-semibold text-rio-error">
-            <Icon name="info" className="mt-0.5 h-5 w-5 shrink-0" />
-            <span>
-              Could not load assigned entries from the server.
-              <span lang="ta" className="mt-1 block font-medium">ஒதுக்கப்பட்ட பதிவுகளை ஏற்ற முடியவில்லை.</span>
-            </span>
-          </p>
-        )}
-
-        {entriesRes.ok && total === 0 && (
-          <div className="rounded-2xl border border-dashed border-rio-navy/20 p-8 text-center">
-            <Icon name="video" className="mx-auto h-10 w-10 text-rio-slate/50" />
-            <p className="mt-2 font-semibold text-rio-navy">No entries assigned yet.</p>
-            <p className="text-sm text-rio-slate">
-              Entries will appear here once the administrator assigns them to you.
-              <span lang="ta" className="mt-1 block font-medium">நிர்வாகி பதிவுகளை ஒதுக்கியதும் இங்கு தோன்றும்.</span>
+          <div role="alert" className="mt-4 rounded-2xl border border-rio-error/40 bg-white p-4 text-sm font-semibold leading-snug text-rio-error">
+            <p className="flex items-start gap-3">
+              <Icon name="info" className="mt-0.5 h-5 w-5 shrink-0" />
+              <span>{M.loadFailed.en}<span lang="ta" className="mt-1 block font-medium leading-[1.5]">{M.loadFailed.ta}</span></span>
             </p>
+            <RetryButton />
           </div>
         )}
 
-        {entriesRes.ok && total > 0 && <EntryList rows={rows} />}
+        {entriesRes.ok && total === 0 && (
+          <div className="mt-4 rounded-2xl border border-dashed border-rio-navy/20 px-4 py-8 text-center">
+            <Icon name="video" className="mx-auto h-9 w-9 text-rio-slate/50" />
+            <p className="mt-2 font-semibold text-rio-navy">{M.noneTitle.en}<span lang="ta" className="block text-sm font-medium text-rio-slate">{M.noneTitle.ta}</span></p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-rio-slate">{M.noneNote.en}<span lang="ta" className="block font-medium">{M.noneNote.ta}</span></p>
+          </div>
+        )}
+
+        {entriesRes.ok && total > 0 && <div className="mt-4"><AssignedEntries entries={entries} /></div>}
       </div>
     </section>
   );

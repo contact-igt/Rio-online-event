@@ -363,7 +363,7 @@ describe("staff email-and-password sign-in (no public staff registration, no sto
     // the admin layout checks the role once and tells the bar so (verified); the bar then skips its own second check
     expect(get("app/admin/layout.tsx")).toContain('staffSession("admin")');
     expect(get("app/admin/layout.tsx")).toContain('<StaffBar role="admin" verified />');
-    expect(get("app/judge/layout.tsx")).toContain('<StaffBar role="judge" />');
+    expect(get("app/judge/layout.tsx")).toContain("<JudgeHeader />");
   });
 });
 

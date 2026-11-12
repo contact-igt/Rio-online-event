@@ -50,7 +50,7 @@ export async function submitRegistration(deps: RegistrationDeps, access: Access,
   if (!isOpen(await loadSettings(deps.db), deps.now())) throw closed();
   await limit(deps, "registration.submit", String(access.submissionId), SUBMIT_LIMITS.perEntry);
 
-  const entry = (await deps.db.query<EntryRow>("SELECT status, event_id, child_name_norm, guardian_mobile, guardian_consent_at FROM submissions WHERE id = ?", [access.submissionId])).rows[0];
+  const entry = (await deps.db.query<EntryRow>("SELECT status, event_id, child_name_norm, guardian_mobile, guardian_consent_at FROM submissions WHERE id = ? AND deleted_at IS NULL", [access.submissionId])).rows[0];
   if (!entry) throw notEditable();
   if (entry.status === "finalized" || entry.status === "held") return loadView(deps.db, access); // a repeated press: already done
   if (entry.status !== "draft") throw notEditable();

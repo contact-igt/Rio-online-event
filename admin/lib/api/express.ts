@@ -26,6 +26,10 @@ export async function sessionCookieHeader(): Promise<string | null> {
   return null;
 }
 
+// On Windows "localhost" is tried as ::1 first and the API listens on IPv4, so every new connection waited about 200 ms before falling back
+// (measured: connect 209 ms to localhost, 1.6 ms to 127.0.0.1). Same machine, same port, only the address spelling changes; hosted addresses are untouched.
+const loopbackIpv4 = (origin: string): string => origin.replace(/^http:\/\/localhost(?=[:/]|$)/u, "http://127.0.0.1");
+
 export async function callApi<T>(path: string, init: { method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; body?: unknown; cookie?: string | null; csrf?: string } = {}): Promise<ApiReply<T>> {
   const method = init.method ?? "GET";
   const target = resolveApiOrigin();
@@ -49,7 +53,7 @@ export async function callApi<T>(path: string, init: { method?: "GET" | "POST" |
   const forwarded = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
   if (forwarded) out["x-forwarded-for"] = forwarded;
   try {
-    const res = await fetch(`${target.origin}/api/v1${path}`, {
+    const res = await fetch(`${loopbackIpv4(target.origin)}/api/v1${path}`, {
       method,
       headers: out,
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
