@@ -38,7 +38,11 @@ export async function provisionJudge(input: { email: string; displayName: string
   if (reply.status === 429) {
     return { ok: false, code: "tooMany" };
   }
-  return { ok: false, code: "provisionFailed" };
+  // Say what actually happened (the old Supabase wording about removing a half-made account does not apply to the Express API, which
+  // creates the account in one transaction). The status and the API's error code are in the server log (callApi logs 403 and 5xx).
+  if (reply.status === 400 || reply.status === 422) return { ok: false, code: "invalid" };
+  if (reply.status === 401 || reply.status === 403) return { ok: false, code: "notAllowed" };
+  return { ok: false, code: "createFailed" };
 }
 
 export async function resetJudgePassword(input: { judgeId: string }): Promise<ResetResult> {

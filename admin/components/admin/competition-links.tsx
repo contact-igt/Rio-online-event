@@ -9,7 +9,8 @@ const EVENT_ICON: Record<string, IconName> = {
   "kutti-pesalar": "mic",
 };
 
-// The competitions list on the Questions page: each styled as a rich card with status, icon, and direct link to its question builder.
+// The competitions on the Questions page, each with the version its parents see. Questions are shared and edited on this page, so a card
+// opens the competition's own page (assign judges, its versions), not the question builder it is already on.
 export function CompetitionLinks({ competitions }: { competitions: Competition[] }) {
   if (competitions.length === 0) {
     return (
@@ -27,7 +28,7 @@ export function CompetitionLinks({ competitions }: { competitions: Competition[]
         return (
           <li key={c.slug}>
             <Link
-              href={`/admin/events/${c.slug}/questions`}
+              href={`/admin/events/${c.slug}`}
               className="group flex h-full flex-col justify-between rounded-2xl border-2 border-rio-navy/10 bg-white p-5 shadow-sm transition hover:border-rio-rose hover:bg-rio-blush/20 hover:shadow-md"
             >
               <div>
@@ -56,7 +57,7 @@ export function CompetitionLinks({ competitions }: { competitions: Competition[]
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-rio-navy/10 pt-3 text-xs font-bold text-rio-rose">
-                <span>Manage questions / கேள்விகளை நிர்வகி</span>
+                <span>Open competition / போட்டியைத் திற</span>
                 <Icon name="arrow" className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </div>
             </Link>

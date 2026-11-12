@@ -2,6 +2,7 @@ import { z } from "zod";
 import { writeAudit } from "../auth/audit.ts";
 import { generatePassword, hashPassword, type Argon2Cost } from "../auth/password.ts";
 import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
+import { DatabaseError } from "../db/errors.ts";
 import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
 
@@ -35,6 +36,7 @@ export const assignJudgeSchema = z.strictObject({
 });
 
 const n = (v: unknown): number => Number(v ?? 0);
+const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : asDate(v).toISOString());
 
 export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }> {
   const result = await db.query<{
@@ -82,8 +84,9 @@ export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }>
       drafts: n(r.drafts),
       final,
       progress: assigned > 0 ? Math.round((final / assigned) * 100) : null,
-      lastLoginAt: asDate(r.last_login_at)?.toISOString() ?? null,
-      createdAt: asDate(r.created_at)?.toISOString() ?? new Date().toISOString(),
+      // A judge who has never signed in has no last_login_at: asDate would throw on it and fail the whole list.
+      lastLoginAt: isoOrNull(r.last_login_at),
+      createdAt: isoOrNull(r.created_at) ?? new Date().toISOString(),
     };
   });
 
@@ -158,7 +161,8 @@ export async function provisionJudge(
         generatedPassword,
       };
     } catch (err: unknown) {
-      if ((err as { code?: string })?.code === "ER_DUP_ENTRY" && attempt < 2) {
+      // The database layer reports any unique-key clash as DatabaseError(constraint "unique"); the e-mail was checked above, so it is the code.
+      if (err instanceof DatabaseError && err.constraint === "unique" && attempt < 2) {
         judgeCode = generateJudgeCode();
         continue;
       }

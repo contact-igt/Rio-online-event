@@ -121,3 +121,24 @@ export async function assignJudgeApi(slug: string, judgeId: number | string, csr
   });
 }
 
+
+// ---- scoring (read only) ---------------------------------------------------------------------------------------------------------------
+export type ScoringSummary = { submitted: number; ranked: number; waiting: number; notAssigned: number; ties: number; heldForReview: number };
+export type ScoringOverview = { competitions: (ScoringSummary & { slug: string; nameTa: string; nameEn: string })[] };
+export type JudgeMark = { judgeName: string; judgeCode: string; marks: number | null; status: "draft" | "final" | "none" };
+export type RankingRow = {
+  entryCode: string; childName: string; childAge: number; hasVideo: boolean; assigned: number; finalScores: number; drafts: number;
+  complete: boolean; average: number | null; rank: number | null; tie: boolean; judges: JudgeMark[];
+};
+export type CompetitionRanking = { competition: { slug: string; nameTa: string; nameEn: string }; entries: RankingRow[]; summary: ScoringSummary };
+
+export const loadScoringOverview = () => get<ScoringOverview>("/admin/scoring");
+export const loadRanking = (slug: string) => get<CompetitionRanking>(`/admin/competitions/${encodeURIComponent(slug)}/ranking`);
+
+// ---- results (winners chosen by hand; public only after the Event Settings time) --------------------------------------------------------
+export type WinnerRow = { place: number; entryCode: string; childName: string; displayName: string; awardLabel: string | null; average: number | null; rank: number | null; approvedAt: string };
+export type CompetitionWinners = { competition: { slug: string; nameTa: string; nameEn: string }; publishAt: string | null; frozen: boolean; winners: WinnerRow[]; candidates: RankingRow[] };
+export type ResultsOverview = { publishAt: string | null; frozen: boolean; competitions: { slug: string; nameTa: string; nameEn: string; winners: number; finalized: number }[] };
+
+export const loadResultsOverview = () => get<ResultsOverview>("/admin/results");
+export const loadWinners = (slug: string) => get<CompetitionWinners>(`/admin/competitions/${encodeURIComponent(slug)}/winners`);

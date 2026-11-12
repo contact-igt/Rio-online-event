@@ -62,27 +62,6 @@ export default async function JudgeEntryPage({ params }: { params: Promise<{ id:
         <PlaybackPanel entryId={entry.entryCode} available={entry.hasVideo} />
       </div>
 
-      {/* Competition Details / Answers */}
-      {entry.answers.length > 0 && (
-        <div className="card mt-6 p-6">
-          <h2 className="text-xl font-bold text-rio-navy mb-3">
-            Entry Details <span lang="ta" className="text-base font-semibold text-rio-slate">/ பதிவு விவரங்கள்</span>
-          </h2>
-          <dl className="divide-y divide-rio-navy/10">
-            {entry.answers.map((a) => (
-              <div key={a.key} className="py-3 sm:grid sm:grid-cols-3 sm:gap-4">
-                <dt className="text-sm font-semibold text-rio-navy">
-                  {a.promptEn} <span lang="ta" className="block text-xs font-normal text-rio-slate">{a.promptTa}</span>
-                </dt>
-                <dd className="mt-1 text-sm text-rio-ink sm:col-span-2 sm:mt-0 font-medium">
-                  {Array.isArray(a.value) ? a.value.join(", ") : String(a.value ?? "—")}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
-
       {/* Score Form (0 to 10) */}
       <div className="card mt-6 p-6">
         <h2 className="text-xl font-bold text-rio-navy mb-1">

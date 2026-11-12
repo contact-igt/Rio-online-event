@@ -59,7 +59,7 @@ describe("M6A public registration action", () => {
 
   it("creates a draft with backend consent, optional email, and typed answers", async () => {
     const result = await run(() => actions.saveDraft(undefined, form()));
-    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1");
+    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1#next-steps"); // lands on the video step
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
       eventSlug: "kutti-pesalar", childName: "Asha Kumar", childAge: 9, guardianName: "Meena Kumar", guardianMobile: "+919876543210", guardianEmail: "parent@example.com",
       guardianConsent: { accepted: true, version: "v0-provisional" },
@@ -151,7 +151,7 @@ describe("M6A public registration action", () => {
   it("updates only through the recovery cookie session and backend CSRF token", async () => {
     h.current = { view: { status: "draft", event: { slug: "kutti-pesalar" }, questionSet: { questions: [{ key: "school", type: "short_text", required: true }] } }, csrfToken: "csrf-from-current" };
     const result = await run(() => actions.saveDraft(undefined, form({ draftId: "current" })));
-    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1");
+    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1#next-steps"); // lands on the video step
     expect(h.update).toHaveBeenCalledWith(expect.objectContaining({ childName: "Asha Kumar" }), "csrf-from-current");
   });
 

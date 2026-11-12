@@ -13,6 +13,8 @@ import {
 import {
   assignJudgeToCompetition, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive,
 } from "./judges.ts";
+import { loadRanking, scoringOverview } from "./scoring.ts";
+import { approveBody, approveWinner, loadWinners, MAX_PLACE, removeWinner, winnersOverview } from "./winners.ts";
 import { listQuery, listRegistrations, loadRegistration } from "./registrations.ts";
 import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } from "./settings.ts";
 
@@ -25,6 +27,7 @@ import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } fro
 //   POST ../:setId/questions, PATCH and DELETE ../:setId/questions/:questionId, PUT ../:setId/order
 
 const notFound = () => new AppError(404, "not_found", "Not found.");
+const assignBody = z.strictObject({ judgeId: z.number().int().positive() });
 const slugOf = (value: unknown): string => {
   if (typeof value !== "string" || value.length > 60 || !/^[a-z0-9]+(-[a-z0-9]+)*$/u.test(value)) throw notFound();
   return value;
@@ -133,8 +136,23 @@ export function adminRouter(deps: AuthDeps): Router {
   router.post("/judges/:judgeId/reset-password", ...admin, guarded(async (req, res) => {
     res.json(await resetJudgePassword(deps.db, now(), actor(res), { judgeId: idOf(req.params.judgeId) }, deps.auth.argon2));
   }));
+  // Scoring (read only): how far judging has got, and the ranking of one competition. Ties are flagged, never broken.
+  router.get("/scoring", ...admin, guarded(async (_req, res) => void res.json(await scoringOverview(deps.db))));
+  // Winners: chosen by hand, published only by the Event Settings time (see winners.ts). Changes need the CSRF token, like every change.
+  router.get("/results", ...admin, guarded(async (_req, res) => void res.json(await winnersOverview(deps.db, now()))));
+  router.get("/competitions/:slug/winners", ...admin, guarded(async (req, res) => void res.json(await loadWinners(deps.db, now(), slugOf(req.params.slug)))));
+  router.post("/competitions/:slug/winners", ...admin, guarded(async (req, res) => {
+    res.status(201).json(await approveWinner(deps.db, now(), actor(res), slugOf(req.params.slug), parse(approveBody, req.body)));
+  }));
+  router.delete("/competitions/:slug/winners/:place", ...admin, guarded(async (req, res) => {
+    const place = idOf(req.params.place);
+    if (place > MAX_PLACE) throw notFound();
+    res.json(await removeWinner(deps.db, now(), actor(res), slugOf(req.params.slug), place));
+  }));
+  router.get("/competitions/:slug/ranking", ...admin, guarded(async (req, res) => void res.json(await loadRanking(deps.db, slugOf(req.params.slug)))));
   router.post("/competitions/:slug/assign-judge", ...admin, guarded(async (req, res) => {
-    const judgeId = idOf((req.body as { judgeId?: unknown })?.judgeId);
+    // The admin site sends the judge id as a number in the JSON body (idOf only reads URL text, so it refused every real request).
+    const { judgeId } = parse(assignBody, req.body);
     res.json(await assignJudgeToCompetition(deps.db, now(), actor(res), { slug: slugOf(req.params.slug), judgeId }));
   }));
 

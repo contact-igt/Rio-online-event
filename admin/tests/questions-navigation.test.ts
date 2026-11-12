@@ -34,8 +34,8 @@ describe("Questions navigation", () => {
     const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
     expect(hrefs).toEqual(["/admin/events/kutti-pesalar", "/admin/events/katturai"]);
     expect(html).toContain("Little Speakers");
-    expect(html).toContain("Parents see v3 · 5 questions");
-    expect(html).toContain("Not published yet");
+    expect(html).toContain("v3 Published (5 Qs)");
+    expect(html).toContain("No questions yet");
     expect(html).not.toContain("No competitions available yet.");
   });
 });

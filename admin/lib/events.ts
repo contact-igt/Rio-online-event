@@ -64,14 +64,13 @@ export const rules = {
   videoSeconds: { min: 30, max: 90 },
 };
 
-// Award names exactly as printed on the poster. The poster does not say which competition each belongs to.
+// Award categories in Tamil, as given by the owner on 2026-11-12 (same list as website/lib/events.ts). Offered when approving a winner.
 export const awards: readonly string[] = [
-  "Best Little Speaker",
-  "Best Story Teller",
-  "Best Tamil Scholar",
-  "Creative Star",
-  "Tamil Star",
-  "Best Little Artist",
+  "மழலை மொழி மன்னன் / மங்கை",
+  "குட்டிக் கதைச் செல்வன் / செல்வி",
+  "கற்பனைச் சிறகு விருது",
+  "தமிழ்த் தாரகை விருது",
+  "குட்டிக் கலைச்சுடர் விருது",
 ];
 
 // The winners announcement date is pending client approval, so no date is hardcoded anywhere. Set it here (both languages) once the
