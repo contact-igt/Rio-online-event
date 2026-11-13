@@ -37,6 +37,28 @@ export async function staffSession(role: StaffRole): Promise<StaffSession | null
   }
 }
 
+export type StaffSessionCheck =
+  | { ok: true; session: StaffSession }
+  | { ok: false; code: "sessionExpired" | "notAllowed" | "unavailable" };
+
+/** Server actions need to distinguish an expired cookie from a role denial or an unavailable API. */
+export async function staffSessionCheck(role: StaffRole): Promise<StaffSessionCheck> {
+  try {
+    const cookie = await sessionCookieHeader();
+    if (!cookie) return { ok: false, code: "sessionExpired" };
+    const reply = await callApi<MeBody>("/staff/me", { cookie });
+    if (reply.status === 401) return { ok: false, code: "sessionExpired" };
+    if (reply.status !== 200 || !reply.body?.user || typeof reply.body.csrfToken !== "string") {
+      return { ok: false, code: "unavailable" };
+    }
+    const session: StaffSession = { user: reply.body.user, role: reply.body.user.role, csrfToken: reply.body.csrfToken };
+    if (!allows(session.role, role) || mustChangePassword(session.user)) return { ok: false, code: "notAllowed" };
+    return { ok: true, session };
+  } catch {
+    return { ok: false, code: "unavailable" };
+  }
+}
+
 /** For pages: not signed in goes to the staff sign-in; a pending password change goes to /staff/set-password; signed in with another role sees a plain 404 (the area is not advertised). */
 export async function requireStaff(role: StaffRole): Promise<StaffSession> {
   let session: StaffSession | null = null;

@@ -76,6 +76,21 @@ export const reg = {
     next: { ta: "அடுத்தது", en: "Next" },
     later: { ta: "பின்னர்", en: "Later" },
   },
+  // After the details are saved: a short summary instead of the whole form (owner, 2026-11-12: one sitting, details then video then submit).
+  summary: {
+    title: { ta: "உங்கள் விவரங்கள்", en: "Your details" },
+    saved: { ta: "விவரங்கள் சேமிக்கப்பட்டன. இப்போது வீடியோவைப் பதிவேற்றுங்கள்.", en: "Details saved. Now upload the video." },
+    savedAgain: { ta: "விவரங்கள் சேமிக்கப்பட்டன.", en: "Details saved." },
+    edit: { ta: "விவரங்களைத் திருத்து", en: "Edit details" },
+    cancelEdit: { ta: "திருத்தாமல் திரும்பு", en: "Back without changes" },
+    child: { ta: "குழந்தை", en: "Child" },
+    years: { ta: "வயது", en: "years" },
+    guardian: { ta: "பெற்றோர் / பாதுகாவலர்", en: "Parent or guardian" },
+    mobile: { ta: "கைப்பேசி", en: "Mobile" },
+    email: { ta: "மின்னஞ்சல்", en: "Email" },
+    notAnswered: { ta: "பதில் இல்லை", en: "Not answered" },
+    locked: { ta: "சமர்ப்பித்த பின் விவரங்களை மாற்ற முடியாது.", en: "Details cannot be changed after the entry is submitted." },
+  },
   nextSteps: {
     title: { ta: "அடுத்த படிகள்", en: "Next steps" },
     upload: { ta: "வீடியோவைப் பதிவேற்று", en: "Upload video" },

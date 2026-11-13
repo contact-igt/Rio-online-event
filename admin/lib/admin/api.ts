@@ -38,6 +38,11 @@ export type RegistrationRow = {
   hasVideo?: boolean;
 };
 export type RegistrationList = { registrations: RegistrationRow[]; total: number; page: number; pageSize: number };
+export type DeletedRegistrationRow = {
+  entryCode: string; status: string; competitionSlug: string; competitionNameTa: string; competitionNameEn: string;
+  childName: string; childAge: number; guardianName: string; deletedAt: string; deletedBy: string | null;
+};
+export type DeletedRegistrationList = { registrations: DeletedRegistrationRow[]; total: number; page: number; pageSize: number };
 export type RegistrationDetail = {
   entryCode: string; status: string; competition: { slug: string; nameTa: string; nameEn: string }; questionSetVersion: number;
   child: { name: string; age: number }; guardian: { name: string; mobile: string; email: string | null };
@@ -49,18 +54,57 @@ export type RegistrationDetail = {
   createdAt: string; updatedAt: string;
 };
 
-export const loadRegistrations = (filter: { competition?: string; status?: string; page?: number }) => {
+export const loadRegistrations = (filter: { competition?: string; status?: string; q?: string; sort?: string; video?: string; duplicate?: boolean; page?: number }) => {
   const query = new URLSearchParams();
+  if (filter.q) query.set("q", filter.q);
+  if (filter.sort) query.set("sort", filter.sort);
+  if (filter.video) query.set("video", filter.video);
+  if (filter.duplicate) query.set("duplicate", "1");
   if (filter.competition) query.set("competition", filter.competition);
   if (filter.status) query.set("status", filter.status);
   if (filter.page && filter.page > 1) query.set("page", String(filter.page));
   const text = query.toString();
   return get<RegistrationList>(`/admin/registrations${text ? `?${text}` : ""}`);
 };
+export const loadDeletedRegistrations = (filter: { q?: string; page?: number }) => {
+  const query = new URLSearchParams();
+  if (filter.q) query.set("q", filter.q);
+  if (filter.page && filter.page > 1) query.set("page", String(filter.page));
+  const text = query.toString();
+  return get<DeletedRegistrationList>(`/admin/registrations/deleted${text ? `?${text}` : ""}`);
+};
 export const loadRegistration = async (entryCode: string): Promise<Loaded<RegistrationDetail>> => {
   const loaded = await get<{ registration: RegistrationDetail }>(`/admin/registrations/${encodeURIComponent(entryCode)}`);
   return loaded.ok ? { ok: true, data: loaded.data.registration } : loaded;
 };
+
+export type RegistrationEditData = {
+  childName: string;
+  childAge: number;
+  guardianName: string;
+  guardianMobile: string;
+  guardianEmail: string | null;
+};
+
+export async function updateRegistrationApi(entryCode: string, data: RegistrationEditData, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; registration: RegistrationEditData & { entryCode: string; updatedAt: string } }>(`/admin/registrations/${encodeURIComponent(entryCode)}`, {
+    method: "PATCH",
+    body: data,
+    cookie,
+    csrf,
+  });
+}
+
+export async function deleteRegistrationApi(entryCode: string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/registrations/${encodeURIComponent(entryCode)}`, { method: "DELETE", cookie, csrf });
+}
+
+export async function restoreRegistrationApi(entryCode: string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/registrations/${encodeURIComponent(entryCode)}/restore`, { method: "POST", cookie, csrf });
+}
 
 export type AdminJudgeRow = {
   id: number;
@@ -121,3 +165,40 @@ export async function assignJudgeApi(slug: string, judgeId: number | string, csr
   });
 }
 
+
+export async function updateJudgeApi(judgeId: number | string, data: { email: string; displayName: string }, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; name: string; email: string }>(`/admin/judges/${judgeId}`, { method: "PATCH", body: data, cookie, csrf });
+}
+
+export async function deleteJudgeApi(judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/judges/${judgeId}`, { method: "DELETE", cookie, csrf });
+}
+
+export async function purgeRegistrationApi(entryCode: string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/registrations/${encodeURIComponent(entryCode)}/permanent`, { method: "DELETE", cookie, csrf });
+}
+
+export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
+
+export const loadDeletedJudges = async (): Promise<Loaded<DeletedJudgeRow[]>> => {
+  const loaded = await get<{ judges: DeletedJudgeRow[] }>("/admin/judges/deleted");
+  return loaded.ok ? { ok: true, data: loaded.data.judges } : loaded;
+};
+
+export async function restoreJudgeApi(judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/judges/${judgeId}/restore`, { method: "POST", cookie, csrf });
+}
+
+export async function purgeJudgeApi(judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true }>(`/admin/judges/${judgeId}/permanent`, { method: "DELETE", cookie, csrf });
+}
+
+export async function requestRegistrationPlaybackApi(entryCode: string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; url: string; expiresInSeconds: number }>(`/admin/registrations/${encodeURIComponent(entryCode)}/video/playback`, { method: "POST", cookie, csrf });
+}

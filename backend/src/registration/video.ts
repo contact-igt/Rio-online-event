@@ -47,7 +47,7 @@ type Ctx = { requestId: string };
 type EntryState = { status: string; eventId: number };
 
 async function entryOf(deps: RegistrationDeps, access: Access): Promise<EntryState> {
-  const row = (await deps.db.query<{ status: string; event_id: number | string }>("SELECT status, event_id FROM submissions WHERE id = ?", [access.submissionId])).rows[0];
+  const row = (await deps.db.query<{ status: string; event_id: number | string }>("SELECT status, event_id FROM submissions WHERE id = ? AND deleted_at IS NULL", [access.submissionId])).rows[0];
   if (!row) throw notEditable();
   return { status: row.status, eventId: Number(row.event_id) };
 }

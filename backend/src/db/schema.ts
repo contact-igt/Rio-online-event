@@ -36,6 +36,7 @@ export interface StaffUsersTable {
   locked_until: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   password_changed_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   last_login_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
+  deleted_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   created_at: TimestampDefault;
 }
 
@@ -144,6 +145,7 @@ export interface SubmissionsTable {
   submitted_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   finalized_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   withdrawn_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
+  deleted_at: ColumnType<Date | string | null, Date | null | undefined, Date | null>;
   finalized_flag: DatabaseGenerated;
 }
 

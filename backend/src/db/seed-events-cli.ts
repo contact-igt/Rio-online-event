@@ -52,7 +52,7 @@ async function main(): Promise<number> {
       return 0;
     }
     const result = await applySeed(db, new Date());
-    out(result.created.length === 0 ? "Nothing to do: all six competitions are already present." : `Created ${result.created.length} competition(s).`);
+    out(result.created.length === 0 ? "Nothing to do: all four competitions are already present." : `Created ${result.created.length} competition(s).`);
     return 0;
   } finally {
     await db.close();

@@ -151,7 +151,7 @@ export async function findAccess(deps: RegistrationDeps, typed: string | null): 
   if (code === null) return null;
   const row = (
     await deps.db.query<{ recovery_id: number | string; submission_id: number | string; expires_at: unknown }>(
-      "SELECT id AS recovery_id, submission_id, expires_at FROM registration_recovery WHERE token_sha256 = ? AND revoked_at IS NULL AND used_at IS NULL",
+      "SELECT r.id AS recovery_id, r.submission_id, r.expires_at FROM registration_recovery r JOIN submissions s ON s.id = r.submission_id WHERE r.token_sha256 = ? AND r.revoked_at IS NULL AND r.used_at IS NULL AND s.deleted_at IS NULL",
       [sha256Hex(code)],
     )
   ).rows[0];
@@ -187,7 +187,7 @@ type EntryRow = {
 };
 const ENTRY_SQL = `SELECT s.id, s.entry_code, s.status, s.child_name, s.child_age, s.guardian_name, s.guardian_mobile, s.guardian_email, s.guardian_consent_version, s.guardian_consent_at,
   s.media_consent, s.media_consent_version, s.media_consent_at, s.created_at, s.updated_at, s.question_set_id, s.event_id, e.slug, e.name_ta, e.name_en, e.min_age, e.max_age, qs.version AS set_version
-  FROM submissions s JOIN events e ON e.id = s.event_id JOIN question_sets qs ON qs.id = s.question_set_id WHERE s.id = ?`;
+  FROM submissions s JOIN events e ON e.id = s.event_id JOIN question_sets qs ON qs.id = s.question_set_id WHERE s.id = ? AND s.deleted_at IS NULL`;
 
 async function loadQuestions(q: Queryable, setId: number): Promise<Question[]> {
   return (await q.query<QuestionRow>(`SELECT ${QUESTION_COLUMNS} FROM questions WHERE question_set_id = ? ORDER BY position`, [setId])).rows.map(toQuestion);

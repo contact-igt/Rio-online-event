@@ -140,7 +140,7 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
       return { error: reg.errors.unavailable, values: raw };
     }
     if (result.status !== 200) return failure(result, raw, answers);
-    redirect(`${registerPath(event.slug)}?saved=1`);
+    redirect(`${registerPath(event.slug)}?saved=1#next-steps`);
   }
   let result;
   try {
@@ -151,7 +151,7 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
   if (result.status !== 201 || !result.body) return failure(result, raw, answers);
   const jar = await cookies();
   jar.set(noticeCookie, result.body.recoveryCode, { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 300 });
-  redirect(`${registerPath(event.slug)}?saved=1`);
+  redirect(`${registerPath(event.slug)}?saved=1#next-steps`);
 }
 
 export async function recoverDraft(_prev: SaveState, formData: FormData): Promise<SaveState> {

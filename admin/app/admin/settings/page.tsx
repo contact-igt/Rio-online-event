@@ -10,20 +10,28 @@ export const metadata: Metadata = { title: "Event settings · Admin", robots: { 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  await requireStaff("admin");
-  const loaded = await loadSettings();
+  // The session check and the data load are independent round trips, so they run together; the page still renders only after the check passes.
+  const [, loaded] = await Promise.all([requireStaff("admin"), loadSettings()]);
 
   return (
-    <section className="mx-auto w-full max-w-[1200px] px-4 py-[clamp(1.5rem,5vw,3rem)] sm:px-6 lg:px-8">
-      <h1 className="text-[clamp(1.75rem,5vw,2.75rem)] font-extrabold">
-        நிகழ்வு அமைப்புகள்
-        <span lang="en" className="block text-[0.6em] font-bold text-rio-slate">Event settings</span>
+    <section className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <p lang="en" className="eyebrow">
+        <span aria-hidden="true" className="h-px w-8 bg-current" />
+        Event configuration
+      </p>
+      <h1 className="mt-2 text-[clamp(1.75rem,4vw,2rem)] font-bold leading-tight text-rio-navy">
+        <span lang="ta" className="block">நிகழ்வு அமைப்புகள்</span>
+        <span lang="en" className="mt-0.5 block text-base font-medium leading-snug text-rio-slate sm:text-lg">Event settings</span>
       </h1>
-      <div className="card mt-6 max-w-3xl p-4 sm:p-6">
-        <h2 className="flex items-center gap-3 font-display text-2xl font-bold text-rio-navy">
-          <Icon name="calendar" className="h-7 w-7 text-rio-rose" />
-          Registration window and results
-        </h2>
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-rio-slate">Set the event window, consent reference, and results schedule using the existing server validation.</p>
+      <div className="card mt-6 p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rio-blush text-rio-rose"><Icon name="calendar" className="h-5 w-5" /></span>
+          <div>
+            <h2 className="text-lg font-semibold leading-snug text-rio-navy"><span lang="ta" className="block">நிகழ்வு அமைப்பு பணியிடம்</span><span lang="en" className="block text-sm font-medium text-rio-slate">Configuration workspace</span></h2>
+            <p className="mt-1 text-sm text-rio-slate">Changes are checked and saved by the server.</p>
+          </div>
+        </div>
         <div className="mt-4">
           {loaded.ok ? (
             <SettingsForm settings={loaded.data} openMin={istMinuteNow(new Date())} />

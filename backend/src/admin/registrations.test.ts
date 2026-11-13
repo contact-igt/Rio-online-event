@@ -5,6 +5,7 @@ import { hashPassword } from "../auth/password.ts";
 import type { DatabaseAdapter, Dialect } from "../db/adapter.ts";
 import { dialects, openTestDatabase } from "../db/test-db.ts";
 import { dropAppSchema, installAppSchema } from "../db/test-schema.ts";
+import type { VideoStore } from "../storage/r2.ts";
 import { captureLogger, listen, testConfig } from "../test-helpers.ts";
 
 // The administrator's registration list and detail, against a disposable database (in-memory SQLite always; a *_test MySQL-protocol database when configured).
@@ -15,7 +16,7 @@ const TRACKING = "zz_admin_registrations_migrations";
 const OPTIONS = JSON.stringify([{ code: "a", ta: "அ", en: "Alpha" }, { code: "b", ta: "ஆ", en: "Beta" }, { code: "c", ta: "இ", en: "Gamma" }]);
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-type Who = { cookie: string };
+type Who = { cookie: string; csrf: string };
 
 describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
   let db: DatabaseAdapter;
@@ -27,16 +28,37 @@ describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
   const sql = <Row = Record<string, unknown>>(text: string, params: readonly (string | number | Date | null)[] = []) => db.query<Row>(text, params);
   const scalar = async (text: string, params: readonly (string | number | Date | null)[] = []) => Number((await sql<{ n: number }>(text, params)).rows[0]!.n);
   const ids: Record<string, number> = {};
+  // A fake private bucket: remembers what was removed, and can be told to fail.
+  const bucket = { removed: [] as string[], fail: false, signed: [] as { key: string; seconds: number }[] };
+  const fakeStore = {
+    remove: async (key: string) => { if (bucket.fail) throw new Error("storage down"); bucket.removed.push(key); },
+    presignGet: async (key: string, o: { expiresInSeconds: number }) => { bucket.signed.push({ key, seconds: o.expiresInSeconds }); return `https://bucket.test/${key}?sig=1`; },
+  } as unknown as VideoStore;
 
   async function signIn(role: "super_admin" | "admin" | "judge"): Promise<Who> {
     const email = `${role}${++counter}@example.org`;
     const password = `Start-Pass-${counter}-xyz`;
     await sql("INSERT INTO staff_users (email, password_hash, role, display_name, active, must_change_password, created_at) VALUES (?, ?, ?, ?, 1, 0, ?)", [email, await hashPassword(password, COST), role, "Staff", now()]);
     const res = await fetch(`${base}/api/v1/staff/login`, { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN, "x-forwarded-for": `10.7.${counter % 250}.${counter % 200}` }, body: JSON.stringify({ email, password }) });
-    return { cookie: res.headers.getSetCookie()[0]!.split(";")[0]! };
+    const body = (await res.json()) as Json;
+    return { cookie: res.headers.getSetCookie()[0]!.split(";")[0]!, csrf: body.csrfToken as string };
   }
   async function get(path: string, who: Who | null): Promise<{ status: number; body: Json; text: string }> {
     const res = await fetch(base + path, { headers: { ...(who ? { cookie: who.cookie } : {}), "x-forwarded-for": "10.6.0.1" } });
+    const text = await res.text();
+    return { status: res.status, body: text ? (JSON.parse(text) as Json) : {}, text };
+  }
+  async function mutate(path: string, method: "PATCH" | "DELETE" | "POST", who: Who | null, body?: unknown): Promise<{ status: number; body: Json; text: string }> {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        origin: ORIGIN,
+        "x-forwarded-for": "10.6.0.1",
+        ...(who ? { cookie: who.cookie, "x-csrf-token": who.csrf } : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
     const text = await res.text();
     return { status: res.status, body: text ? (JSON.parse(text) as Json) : {}, text };
   }
@@ -82,7 +104,7 @@ describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
   beforeAll(async () => {
     db = openTestDatabase(dialect);
     await installAppSchema(db, TRACKING);
-    server = createServer(createApp({ config, logger: captureLogger().logger, state: { shuttingDown: false }, db, now }));
+    server = createServer(createApp({ config, logger: captureLogger().logger, state: { shuttingDown: false }, db, now, video: fakeStore }));
     base = await listen(server);
     ids.a = await addEvent("alpha-contest", 1);
     ids.b = await addEvent("beta-contest", 2);
@@ -188,5 +210,179 @@ describe.each(dialects)("%s admin registrations", (dialect: Dialect) => {
       expect((await get(`/api/v1/admin/registrations/${code}`, admin)).status, code).toBe(404);
     }
     expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.viewed'")).toBe(before);
+  });
+
+  it("allows draft edit and soft delete only to Super Admin, preserving the deleted row and audit", async () => {
+    const boss = await signIn("super_admin");
+    const admin = await signIn("admin");
+    const judge = await signIn("judge");
+    const latestVersion = Number((await sql<{ version: number }>("SELECT MAX(version) AS version FROM question_sets WHERE event_id = ?", [ids.a!])).rows[0]!.version ?? 0);
+    await sql("UPDATE question_sets SET status = 'retired', retired_at = ? WHERE event_id = ? AND status = 'published'", [now(), ids.a!]);
+    const activeSet = await publishSet(ids.a!, latestVersion + 1, "Edit");
+    const draftId = await addEntry("EDIT0001", ids.a!, activeSet);
+    const protectedId = await addEntry("LOCK0001", ids.a!, activeSet, { status: "withdrawn" });
+
+    const editBody = { childName: "Edited Child", childAge: 6, guardianName: "Edited Parent", guardianMobile: "+919876543219", guardianEmail: "edited@example.org" };
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "PATCH", admin, editBody)).status).toBe(200);
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "PATCH", judge, editBody)).status).toBe(403);
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "PATCH", boss, { ...editBody, childAge: 99 })).status).toBe(400);
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "PATCH", boss, editBody)).status).toBe(200);
+    expect((await get("/api/v1/admin/registrations/EDIT0001", admin)).body.registration).toMatchObject({ child: { name: "Edited Child", age: 6 }, guardian: { name: "Edited Parent", mobile: "+919876543219", email: "edited@example.org" } });
+
+    expect((await mutate("/api/v1/admin/registrations/LOCK0001", "DELETE", admin)).status).toBe(403);
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "DELETE", judge)).status).toBe(403);
+    expect((await mutate("/api/v1/admin/registrations/LOCK0001", "DELETE", boss)).status).toBe(409);
+    expect((await mutate("/api/v1/admin/registrations/EDIT0001", "DELETE", boss)).status).toBe(200);
+    expect((await get("/api/v1/admin/registrations", admin)).body.registrations.some((r: Json) => r.entryCode === "EDIT0001")).toBe(false);
+    expect((await get("/api/v1/admin/registrations/EDIT0001", admin)).status).toBe(404);
+    expect(Number((await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ? AND deleted_at IS NOT NULL", [draftId])))).toBe(1);
+    expect(Number((await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.deleted' AND entity_id = ?", [String(draftId)])))).toBe(1);
+    expect(Number((await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ?", [protectedId])))).toBe(1);
+  });
+
+  it("lists deleted drafts only to Super Admin and restores them without changing identity", async () => {
+    const boss = await signIn("super_admin");
+    const admin = await signIn("admin");
+    const judge = await signIn("judge");
+    const activeSet = Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [ids.a!])).rows[0]!.id);
+    const restoredId = await addEntry("REST0001", ids.a!, activeSet, { childName: "Restore Child" });
+    expect((await mutate("/api/v1/admin/registrations/REST0001", "DELETE", boss)).status).toBe(200);
+
+    expect((await get("/api/v1/admin/registrations/deleted", admin)).status).toBe(403);
+    expect((await get("/api/v1/admin/registrations/deleted", judge)).status).toBe(403);
+    const deleted = await get("/api/v1/admin/registrations/deleted?q=REST0001", boss);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.registrations).toMatchObject([{ entryCode: "REST0001", status: "draft", childName: "Restore Child", deletedBy: "Staff" }]);
+    expect(deleted.body.registrations[0].deletedAt).toEqual(expect.any(String));
+    expect((await get("/api/v1/admin/registrations", admin)).body.registrations.some((r: Json) => r.entryCode === "REST0001")).toBe(false);
+
+    expect((await mutate("/api/v1/admin/registrations/REST0001/restore", "POST", admin)).status).toBe(403);
+    expect((await mutate("/api/v1/admin/registrations/REST0001/restore", "POST", judge)).status).toBe(403);
+    expect((await mutate("/api/v1/admin/registrations/REST0001/restore", "POST", boss)).status).toBe(200);
+    expect((await get("/api/v1/admin/registrations/REST0001", admin)).body.registration).toMatchObject({ entryCode: "REST0001", status: "draft", child: { name: "Restore Child" }, guardian: { name: "Parent Person" } });
+    expect(Number((await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ? AND deleted_at IS NULL", [restoredId])))).toBe(1);
+    expect(Number((await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.restored' AND entity_id = ?", [String(restoredId)])))).toBe(1);
+
+    const heldId = await addEntry("REST0002", ids.a!, activeSet, { childName: "Conflict Child" });
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at, verified_at, verified_bytes) VALUES (?, ?, 'video/mp4', 200000, 'verified', ?, ?, 200000)", [heldId, "11111111-1111-4111-8111-111111111111", new Date(Date.now() + 3_600_000), now()]);
+    await sql("UPDATE submissions SET status = 'held', submitted_at = ? WHERE id = ?", [now(), heldId]);
+    await addEntry("REST0003", ids.a!, activeSet, { childName: "Conflict Child" });
+    expect((await mutate("/api/v1/admin/registrations/REST0003", "DELETE", boss)).status).toBe(200);
+    expect((await mutate("/api/v1/admin/registrations/REST0003/restore", "POST", boss)).status).toBe(409);
+  });
+
+  it("searches code, child and guardian names, sorts with an allowlist, and combines both with the filters and paging", async () => {
+    const admin = await signIn("admin");
+    const live = async (eventId: number) => Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [eventId])).rows[0]!.id);
+    const [setA, setB] = [await live(ids.a!), await live(ids.b!)];
+    await addEntry("SRCH0001", ids.a!, setA, { childName: "Zed Searchable" });
+    await addEntry("SRCH0002", ids.b!, setB, { childName: "Abe Searchable" });
+    await addEntry("SRCH0003", ids.a!, setA, { childName: "Pct 100% Sure" });
+    const codes = async (query: string) => (await get(`/api/v1/admin/registrations?${query}`, admin)).body.registrations.map((r: Json) => r.entryCode);
+    expect(await codes("q=searchable&sort=child_asc")).toEqual(["SRCH0002", "SRCH0001"]);
+    expect(await codes("q=searchable&sort=child_desc")).toEqual(["SRCH0001", "SRCH0002"]);
+    expect(await codes("q=SRCH0003")).toEqual(["SRCH0003"]); // by reference
+    expect(await codes("q=parent person&competition=beta-contest&sort=oldest")).toContain("SRCH0002"); // by guardian name, with a filter
+    expect(await codes("q=searchable&competition=alpha-contest")).toEqual(["SRCH0001"]);
+    expect(await codes("q=100%25")).toEqual(["SRCH0003"]); // a typed % matches itself, not everything
+    expect(await codes("q=_")).toEqual([]);
+    const all = (await get("/api/v1/admin/registrations?q=searchable", admin)).body;
+    expect(all.total).toBe(2);
+    // video and duplicate filters, combined with search
+    const withVideo = await sql<{ id: number }>("SELECT id FROM submissions WHERE entry_code = 'SRCH0001'");
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at, verified_at, verified_bytes) VALUES (?, ?, 'video/mp4', 200000, 'verified', ?, ?, 200000)", [Number(withVideo.rows[0]!.id), 'aaaaaaaa-aaaa-4ccc-8ddd-eeeeeeeeeeee', new Date(Date.now() + 3_600_000), now()]);
+    expect(await codes("q=searchable&video=uploaded")).toEqual(["SRCH0001"]);
+    expect(await codes("q=searchable&video=none")).toEqual(["SRCH0002"]);
+    expect(await codes("q=searchable&duplicate=1")).toEqual([]);
+    expect((await get("/api/v1/admin/registrations?video=maybe", admin)).status).toBe(400);
+    expect((await get("/api/v1/admin/registrations?sort=id%3B%20DROP", admin)).status).toBe(400); // only named sorts are accepted
+    expect((await get(`/api/v1/admin/registrations?q=${"x".repeat(81)}`, admin)).status).toBe(400);
+  });
+
+  it("permanently deletes only a soft-deleted draft, for the Super Admin, removing its stored video first and keeping a minimal audit row", async () => {
+    const boss = await signIn("super_admin");
+    const admin = await signIn("admin");
+    const judge = await signIn("judge");
+    const live = async (eventId: number) => Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [eventId])).rows[0]!.id);
+    const setA = await live(ids.a!);
+    const draftId = await addEntry("PURGE001", ids.a!, setA, { childName: "Purge Me" });
+    const otherId = await addEntry("PURGE002", ids.a!, setA, { childName: "Other Child" });
+    const keyA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at) VALUES (?, ?, 'video/mp4', 200000, 'issued', ?)", [draftId, keyA, new Date(Date.now() + 3_600_000)]);
+    await sql("INSERT INTO duplicate_reviews (event_id, submission_id, matched_submission_id, status, reason) VALUES (?, ?, ?, 'flagged', 'similar_name')", [ids.a!, draftId, otherId]);
+    const url = "/api/v1/admin/registrations/PURGE001/permanent";
+
+    // not soft-deleted yet, wrong roles
+    expect((await mutate(url, "DELETE", boss)).status).toBe(404);
+    expect((await mutate("/api/v1/admin/registrations/PURGE001", "DELETE", boss)).status).toBe(200); // soft delete first
+    expect((await mutate(url, "DELETE", admin)).status).toBe(403);
+    expect((await mutate(url, "DELETE", judge)).status).toBe(403);
+    expect((await mutate(url, "DELETE", null)).status).toBe(401);
+    expect(await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ?", [draftId])).toBe(1);
+
+    // storage failure: nothing is deleted
+    bucket.fail = true;
+    expect((await mutate(url, "DELETE", boss)).status).toBe(502);
+    bucket.fail = false;
+    expect(await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ?", [draftId])).toBe(1);
+    expect(await scalar("SELECT COUNT(*) AS n FROM video_uploads WHERE submission_id = ?", [draftId])).toBe(1);
+
+    // success: stored objects first, then every row of that draft; the other entry is untouched
+    const ok = await mutate(url, "DELETE", boss);
+    expect(ok.status).toBe(200);
+    expect(bucket.removed).toEqual([`pending/${keyA}`, `videos/${keyA}`]);
+    for (const table of ["submissions WHERE id", "video_uploads WHERE submission_id", "duplicate_reviews WHERE submission_id", "entry_answers WHERE submission_id", "registration_recovery WHERE submission_id", "email_outbox WHERE submission_id"]) {
+      expect(await scalar(`SELECT COUNT(*) AS n FROM ${table} = ?`, [draftId]), table).toBe(0);
+    }
+    expect(await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id = ?", [otherId])).toBe(1);
+    const audit = (await sql<{ details: unknown }>("SELECT details FROM audit_log WHERE action = 'registration.purged' AND entity_id = ?", [String(draftId)])).rows;
+    expect(audit).toHaveLength(1);
+    expect(JSON.stringify(audit[0]!.details)).not.toMatch(/Purge Me|Parent Person|parent@example/);
+    expect((await mutate(url, "DELETE", boss)).status).toBe(404); // already gone: repeating is harmless
+  });
+
+  it("refuses to purge a protected or depended-on entry even when it is marked deleted", async () => {
+    const boss = await signIn("super_admin");
+    const live = Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [ids.a!])).rows[0]!.id);
+    const withdrawn = await addEntry("PURGE003", ids.a!, live, { status: "withdrawn" });
+    await sql("UPDATE submissions SET deleted_at = ? WHERE id = ?", [now(), withdrawn]);
+    expect((await mutate("/api/v1/admin/registrations/PURGE003/permanent", "DELETE", boss)).status).toBe(409); // not a draft
+    const pointed = await addEntry("PURGE004", ids.a!, live);
+    const pointer = await addEntry("PURGE005", ids.a!, live);
+    await sql("INSERT INTO duplicate_reviews (event_id, submission_id, matched_submission_id, status, reason) VALUES (?, ?, ?, 'flagged', 'similar_name')", [ids.a!, pointer, pointed]);
+    await sql("UPDATE submissions SET deleted_at = ? WHERE id = ?", [now(), pointed]);
+    expect((await mutate("/api/v1/admin/registrations/PURGE004/permanent", "DELETE", boss)).status).toBe(409); // another entry's review points at it
+    expect(await scalar("SELECT COUNT(*) AS n FROM submissions WHERE id IN (?, ?)", [withdrawn, pointed])).toBe(2);
+  });
+
+  it("lets an administrator watch an entry's video through a five-minute signed link, audited, never to a judge or anonymous caller", async () => {
+    const admin = await signIn("admin");
+    const boss = await signIn("super_admin");
+    const judge = await signIn("judge");
+    const setA = Number((await sql<{ id: number }>("SELECT id FROM question_sets WHERE event_id = ? AND status = 'published'", [ids.a!])).rows[0]!.id);
+    const withVideo = await addEntry("WATCH001", ids.a!, setA);
+    const noVideo = await addEntry("WATCH002", ids.a!, setA);
+    const key = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    await sql("INSERT INTO video_uploads (submission_id, object_key, content_type, declared_bytes, status, expires_at, verified_at, verified_bytes) VALUES (?, ?, 'video/mp4', 200000, 'verified', ?, ?, 200000)", [withVideo, key, new Date(Date.now() + 3_600_000), now()]);
+    const url = (code: string) => `/api/v1/admin/registrations/${code}/video/playback`;
+
+    expect((await mutate(url("WATCH001"), "POST", null)).status).toBe(401);
+    expect((await mutate(url("WATCH001"), "POST", judge)).status).toBe(403);
+    expect((await mutate(url("WATCH002"), "POST", admin)).status).toBe(404); // no verified video
+    expect((await mutate(url("NOSUCH99"), "POST", admin)).status).toBe(404);
+    expect(bucket.signed).toEqual([]);
+
+    for (const who of [admin, boss]) {
+      const ok = await mutate(url("WATCH001"), "POST", who);
+      expect(ok.status).toBe(200);
+      expect(ok.body).toMatchObject({ ok: true, expiresInSeconds: 300, url: `https://bucket.test/videos/${key}?sig=1` });
+    }
+    expect(bucket.signed).toEqual([{ key: `videos/${key}`, seconds: 300 }, { key: `videos/${key}`, seconds: 300 }]);
+    expect(await scalar("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'registration.video_playback' AND entity_id = ?", [String(withVideo)])).toBe(2);
+
+    // a deleted entry's video is not reachable
+    await sql("UPDATE submissions SET deleted_at = ? WHERE id = ?", [now(), withVideo]);
+    expect((await mutate(url("WATCH001"), "POST", admin)).status).toBe(404);
+    expect(noVideo).toBeGreaterThan(0);
   });
 });

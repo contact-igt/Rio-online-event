@@ -44,7 +44,7 @@ describe("db:status and db:ready on a database nobody has touched", () => {
   it("db:status reports every migration as pending and writes nothing: not even the tracking table", () => {
     const r = run("status");
     expect(r.code).toBe(0);
-    expect(r.out.split("\n")).toHaveLength(14);
+    expect(r.out.split("\n")).toHaveLength(17);
     expect(r.out.split("\n").every((line) => line.endsWith("pending"))).toBe(true);
     expect(tables()).toEqual([]);
   });
@@ -61,8 +61,8 @@ describe("migrate", () => {
   it("preflights, applies every migration, validates the schema, and is idempotent", () => {
     const m = run("migrate");
     expect(m.code).toBe(0);
-    expect(m.out).toContain("Preflight: 14 pending");
-    expect(m.out).toContain("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0013, 0014");
+    expect(m.out).toContain("Preflight: 17 pending");
+    expect(m.out).toContain("Applied: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0013, 0014, 0015, 0016, 0017");
     expect(m.out).toContain("Schema: valid");
     expect(run("status").out.split("\n").every((line) => line.endsWith("applied"))).toBe(true);
     const ready = run("ready");
@@ -80,13 +80,13 @@ describe("migrate", () => {
 
   it("db:ready says pending when a migration file is newer than the database, without applying it", () => {
     const db = new DatabaseSync(sqlitePath);
-    db.exec("DELETE FROM rio_migrations WHERE version = '0014'");
+    db.exec("DELETE FROM rio_migrations WHERE version = '0017'");
     db.close();
     const r = run("ready");
     expect(r.code).toBe(1);
     expect(r.out).toBe("not ready: migrations_pending");
     const db2 = new DatabaseSync(sqlitePath, { readOnly: true });
-    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(13); // still not applied
+    expect((db2.prepare("SELECT COUNT(*) AS n FROM rio_migrations").get() as { n: number }).n).toBe(16); // still not applied
     db2.close();
   });
 
@@ -105,7 +105,7 @@ describe("migrate", () => {
   });
 
   it("refuses partially executed DDL whose migration record is still pending", () => {
-    withDb(sqlitePath, (db) => db.exec("DELETE FROM rio_migrations WHERE version IN ('0013', '0014')"));
+    withDb(sqlitePath, (db) => db.exec("DELETE FROM rio_migrations WHERE version IN ('0013', '0014', '0015', '0016', '0017')"));
     const result = run("migrate");
     expect(result.code).toBe(1);
     expect(result.out).toContain("SCHEMA_DRIFT definition_mismatch_table_staff_users");

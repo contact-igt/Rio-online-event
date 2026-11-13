@@ -66,7 +66,7 @@ describe("callApi", () => {
     vi.stubEnv("RIO_ADMIN_ORIGIN", "http://localhost:3001");
     fetchMock.mockResolvedValue(json(200, { user: { id: 1 } }));
     await callApi("/staff/login", { method: "POST", body: { email: "a@b.co", password: "pw" } });
-    expect(fetchMock.mock.calls[0]![0]).toBe("http://localhost:4000/api/v1/staff/login");
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://127.0.0.1:4000/api/v1/staff/login"); // "localhost" is spelled as its IPv4 address on the wire
     expect((fetchMock.mock.calls[0]![1] as { headers: Record<string, string> }).headers.origin).toBe("http://localhost:3001");
   });
 
@@ -79,7 +79,7 @@ describe("callApi", () => {
     vi.stubEnv("RIO_ADMIN_ORIGIN_DEVELOPMENT", "http://localhost:3001");
     vi.stubEnv("RIO_ADMIN_ORIGIN_PRODUCTION", ADMIN_SITE);
     fetchMock.mockResolvedValue(json(200, { user: { id: 1 } }));
-    for (const [appEnv, api, origin] of [["development", "http://localhost:4000", "http://localhost:3001"], ["production", RAILWAY, ADMIN_SITE]] as const) {
+    for (const [appEnv, api, origin] of [["development", "http://127.0.0.1:4000", "http://localhost:3001"], ["production", RAILWAY, ADMIN_SITE]] as const) {
       vi.stubEnv("APP_ENV", appEnv);
       fetchMock.mockClear();
       await callApi("/staff/login", { method: "POST", body: { email: "a@b.co", password: "pw" } });

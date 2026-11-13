@@ -27,12 +27,8 @@ export type EntryReviewDetail = {
     nameEn: string;
   };
   hasVideo: boolean;
-  answers: {
-    key: string;
-    promptTa: string;
-    promptEn: string;
-    value: string | number | string[] | null;
-  }[];
+  // No answers: judges score the video by entry code only. Answers can hold the child's school, the home address or the PIN code, which a
+  // judge must never receive (CLAUDE.md: judges never get parent contact data or anything that names the child).
   score: {
     marks: number | null;
     comments: string | null;
@@ -52,6 +48,8 @@ export const saveScoreSchema = z.strictObject({
 });
 
 const n = (v: unknown): number => Number(v ?? 0);
+/** A draft score has no finalized_at: asDate would throw on it. */
+const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : asDate(v).toISOString());
 
 export async function listAssignedEntries(db: Queryable, judgeId: number): Promise<{ entries: AssignedEntryRow[] }> {
   const result = await db.query<{
@@ -80,7 +78,7 @@ export async function listAssignedEntries(db: Queryable, judgeId: number): Promi
     JOIN submissions s ON s.id = a.submission_id
     JOIN events e ON e.id = s.event_id
     LEFT JOIN scores sc ON sc.judge_id = a.judge_id AND sc.submission_id = s.id
-    WHERE a.judge_id = ?
+    WHERE a.judge_id = ? AND s.deleted_at IS NULL
     ORDER BY s.id ASC
     `,
     [judgeId],
@@ -101,7 +99,7 @@ export async function listAssignedEntries(db: Queryable, judgeId: number): Promi
             marks,
             comments: r.comments ?? null,
             status,
-            finalizedAt: asDate(r.finalized_at)?.toISOString() ?? null,
+            finalizedAt: isoOrNull(r.finalized_at),
           }
         : null,
     };
@@ -139,7 +137,7 @@ export async function getEntryForReview(db: Queryable, judgeId: number, entryCod
     JOIN submissions s ON s.id = a.submission_id
     JOIN events e ON e.id = s.event_id
     LEFT JOIN scores sc ON sc.judge_id = a.judge_id AND sc.submission_id = s.id
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [judgeId, entryCode],
   );
@@ -149,43 +147,6 @@ export async function getEntryForReview(db: Queryable, judgeId: number, entryCod
   }
 
   const row = entryRes.rows[0]!;
-  const submissionId = Number(row.id);
-
-  // Load answers without revealing personal data
-  const answersRes = await db.query<{
-    question_key: string;
-    prompt_ta: string;
-    prompt_en: string;
-    value_json: string;
-  }>(
-    `
-    SELECT
-      q.question_key,
-      q.prompt_ta,
-      q.prompt_en,
-      a.value_json
-    FROM entry_answers a
-    JOIN questions q ON q.id = a.question_id
-    WHERE a.submission_id = ?
-    ORDER BY q.sort_order ASC
-    `,
-    [submissionId],
-  );
-
-  const answers = answersRes.rows.map((a) => {
-    let parsedVal = null;
-    try {
-      parsedVal = JSON.parse(a.value_json);
-    } catch {
-      parsedVal = a.value_json;
-    }
-    return {
-      key: a.question_key,
-      promptTa: a.prompt_ta,
-      promptEn: a.prompt_en,
-      value: parsedVal,
-    };
-  });
 
   const rawMarks = row.marks_hundredths !== null && row.marks_hundredths !== undefined ? Number(row.marks_hundredths) : null;
   const marks = rawMarks !== null ? rawMarks / 100 : null;
@@ -199,13 +160,12 @@ export async function getEntryForReview(db: Queryable, judgeId: number, entryCod
       nameEn: row.name_en,
     },
     hasVideo: n(row.has_video) > 0,
-    answers,
     score: status
       ? {
           marks,
           comments: row.comments ?? null,
           status,
-          finalizedAt: asDate(row.finalized_at)?.toISOString() ?? null,
+          finalizedAt: isoOrNull(row.finalized_at),
         }
       : null,
   };
@@ -230,7 +190,7 @@ export async function mintPlaybackUrl(
     FROM judge_assignments a
     JOIN submissions s ON s.id = a.submission_id
     JOIN video_uploads v ON v.submission_id = s.id AND v.status = 'verified'
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [actor.judgeId, entryCode],
   );
@@ -269,7 +229,7 @@ export async function saveScore(
     SELECT s.id
     FROM judge_assignments a
     JOIN submissions s ON s.id = a.submission_id
-    WHERE a.judge_id = ? AND s.entry_code = ?
+    WHERE a.judge_id = ? AND s.entry_code = ? AND s.deleted_at IS NULL
     `,
     [actor.judgeId, entryCode],
   );

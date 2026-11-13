@@ -17,14 +17,17 @@ const RECENT = 10;
 const count = (v: unknown): number => Number(v ?? 0);
 
 export async function loadDashboard(db: Queryable, now: Date): Promise<Dashboard> {
-  const comp = await db.query<{ total: unknown; active: unknown }>("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END), 0) AS active FROM events");
-  const byStatus = await db.query<{ status: string; n: unknown }>("SELECT status, COUNT(*) AS n FROM submissions GROUP BY status");
-  const judges = await db.query<{ n: unknown }>("SELECT COUNT(*) AS n FROM staff_users WHERE role = 'judge' AND active = 1");
-  const recent = await db.query<{ entry_code: string; slug: string; name_ta: string; name_en: string; status: string; created_at: unknown; updated_at: unknown }>(
+  // Independent reads, issued together: the page waits for the slowest one, not the sum of all five.
+  const [comp, byStatus, judges, recent, settings] = await Promise.all([
+    db.query<{ total: unknown; active: unknown }>("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END), 0) AS active FROM events"),
+    db.query<{ status: string; n: unknown }>("SELECT status, COUNT(*) AS n FROM submissions GROUP BY status"),
+    db.query<{ n: unknown }>("SELECT COUNT(*) AS n FROM staff_users WHERE role = 'judge' AND active = 1"),
+    db.query<{ entry_code: string; slug: string; name_ta: string; name_en: string; status: string; created_at: unknown; updated_at: unknown }>(
     `SELECT s.entry_code, e.slug, e.name_ta, e.name_en, s.status, s.created_at, s.updated_at
        FROM submissions s JOIN events e ON e.id = s.event_id ORDER BY s.created_at DESC, s.id DESC LIMIT ${RECENT}`,
-  );
-  const settings = await loadSettings(db);
+    ),
+    loadSettings(db),
+  ]);
   const counts = new Map(byStatus.rows.map((r) => [r.status, count(r.n)]));
   const n = (status: string) => counts.get(status) ?? 0;
   return {
