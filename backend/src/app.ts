@@ -29,6 +29,8 @@ export type AppDeps = {
   video?: VideoStore | null;
   /** Where later modules (and tests) attach their own routes; they receive the same authentication dependencies the staff routes use. */
   mount?: (app: Express, auth: AuthDeps) => void;
+  /** Starts sending queued confirmation e-mails (the server passes it when e-mail is on and configured). */
+  notify?: () => void;
 };
 
 export function createApp(deps: AppDeps): Express {
@@ -71,7 +73,7 @@ export function createApp(deps: AppDeps): Express {
     app.use("/api/v1/staff", staffRouter(auth));
     app.use("/api/v1/admin", adminRouter(auth, video));
     app.use("/api/v1/judge", judgeRouter(auth, video));
-    app.use("/api/v1", registrationRouter(registrationDeps(deps.db, config, deps.now, video)));
+    app.use("/api/v1", registrationRouter({ ...registrationDeps(deps.db, config, deps.now, video), ...(deps.notify ? { notify: deps.notify } : {}) }));
     app.use("/api/v1", resultsRouter(deps.db, deps.now ?? (() => new Date())));
     deps.mount?.(app, auth);
   }

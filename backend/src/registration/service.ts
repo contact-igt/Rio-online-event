@@ -25,7 +25,8 @@ import { videoStoreFor, type VideoStore } from "../storage/r2.ts";
 // Nothing here ever writes a name, a mobile number, an e-mail address, an address or a code into the audit log or an error.
 
 /** `video` is the private bucket, or null when it is not configured (uploads then stay off whatever the switch says). */
-export type RegistrationDeps = { db: DatabaseAdapter; config: Config; now: () => Date; limiter: RateLimiter; video: VideoStore | null };
+/** `notify`: start sending queued confirmations now (set by the server when e-mail is switched on and configured). */
+export type RegistrationDeps = { db: DatabaseAdapter; config: Config; now: () => Date; limiter: RateLimiter; video: VideoStore | null; notify?: () => void };
 export const registrationDeps = (db: DatabaseAdapter, config: Config, now: () => Date = () => new Date(), video: VideoStore | null = videoStoreFor(config)): RegistrationDeps =>
   ({ db, config, now, limiter: createRateLimiter(db), video });
 

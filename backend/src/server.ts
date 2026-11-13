@@ -6,6 +6,8 @@ import { assertDatabaseName, assertEngineMatches } from "./db/engine.ts";
 import { assertNoLocalEnvFile, GuardError } from "./db/guards.ts";
 import { openDatabase } from "./db/open.ts";
 import { createLogger } from "./logger.ts";
+import { createNotifier } from "./notify/outbox.ts";
+import { resendMailer } from "./notify/resend.ts";
 import { createShutdown } from "./shutdown.ts";
 
 // Process entry point: configuration, listening, signals. Everything testable lives in the modules above.
@@ -27,6 +29,12 @@ const db = config.database ? openDatabase(config.database) : undefined;
 if (db && config.registration.publicOrigins.length === 0) logger.warn("public_origins_not_configured"); // registration changes will be refused until PUBLIC_ORIGINS is set
 // Names only, never values: uploads and judge playback stay off until all four R2 settings are present and well-formed.
 if (config.uploads.enabled && !config.uploads.r2) logger.warn("video_uploads_enabled_but_r2_not_configured");
+// Confirmation e-mail: queued when RIO_EMAIL_ENABLED=yes, sent only when the Resend settings are present too (names only in the warning).
+if (config.email.enabled && !config.email.resend) logger.warn("confirmation_email_enabled_but_resend_not_configured");
+const notifier = db && config.email.enabled && config.email.resend ? createNotifier({ db, mailer: resendMailer(config.email.resend), now: () => new Date(), logger }) : undefined;
+// Anything that failed, or was queued while the service was down, is retried every minute.
+const emailSweep = notifier ? setInterval(notifier.kick, 60_000) : undefined;
+emailSweep?.unref();
 // Fail closed on the wrong server or the wrong database. An unreachable database is not fatal here (see above); a reachable but wrong one is.
 if (db && config.database) {
   try {
@@ -47,14 +55,14 @@ if (db && config.database) {
 const KEEP_WARM = 3;
 const keepWarm = db && config.database?.dialect === "mysql" ? setInterval(() => { for (let i = 0; i < KEEP_WARM; i++) void db.query("SELECT 1").catch(() => undefined); }, 30_000) : undefined;
 keepWarm?.unref();
-const server = createServer(createApp({ config, logger, state, ...(db ? { db } : {}) }));
+const server = createServer(createApp({ config, logger, state, ...(db ? { db } : {}), ...(notifier ? { notify: notifier.kick } : {}) }));
 
 // Longer than the proxy's idle timeout (Railway and most load balancers use 60 s), so the proxy never reuses a socket we just closed.
 server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
 server.requestTimeout = 30_000;
 
-const shutdown = createShutdown({ server, state, logger, timeoutMs: config.shutdownTimeoutMs, onClosed: async () => { if (keepWarm) clearInterval(keepWarm); await db?.close(); } });
+const shutdown = createShutdown({ server, state, logger, timeoutMs: config.shutdownTimeoutMs, onClosed: async () => { if (keepWarm) clearInterval(keepWarm); if (emailSweep) clearInterval(emailSweep); await db?.close(); } });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown(signal).then((result) => process.exit(result === "closed" ? 0 : 1)));
 }

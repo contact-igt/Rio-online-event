@@ -2,6 +2,7 @@ import { z } from "zod";
 import { writeAudit } from "../auth/audit.ts";
 import type { Queryable } from "../db/adapter.ts";
 import { DatabaseError } from "../db/errors.ts";
+import { queueConfirmation } from "../notify/outbox.ts";
 import { AppError } from "../http/errors.ts";
 import { videoKey } from "../storage/r2.ts";
 import { inspectVideo } from "./inspect.ts";
@@ -100,6 +101,8 @@ export async function submitRegistration(deps: RegistrationDeps, access: Access,
         held ? [status, now, now, access.submissionId] : [status, now, now, now, access.submissionId],
       );
       if (done.affectedRows !== 1) throw notEditable();
+      // The confirmation e-mail (owner, 2026-11-13), queued with the submission itself; it is sent afterwards and can never undo it.
+      if (deps.config.email.enabled) await queueConfirmation(tx, access.submissionId, now);
       await writeAudit(tx, now, { actorType: "public", action: "registration.submitted", entityType: "submission", entityId: access.submissionId, requestId: ctx.requestId, details: { outcome: status } });
     });
 
@@ -114,5 +117,6 @@ export async function submitRegistration(deps: RegistrationDeps, access: Access,
     else if (error instanceof DatabaseError && error.constraint === "rule") throw notEditable();
     else throw error;
   }
+  deps.notify?.();
   return loadView(deps.db, access);
 }

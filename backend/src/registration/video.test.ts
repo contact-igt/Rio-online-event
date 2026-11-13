@@ -5,6 +5,8 @@ import type { DatabaseAdapter, Dialect, Queryable } from "../db/adapter.ts";
 import { dialects, openTestDatabase } from "../db/test-db.ts";
 import { dropAppSchema, installAppSchema } from "../db/test-schema.ts";
 import { mintPlaybackUrl, PLAYBACK_SECONDS } from "../judge/entries.ts";
+import { createNotifier } from "../notify/outbox.ts";
+import type { EmailMessage, SendResult } from "../notify/resend.ts";
 import { pendingKey, videoKey, type ObjectHead, type VideoStore } from "../storage/r2.ts";
 import { captureLogger, listen, testConfig } from "../test-helpers.ts";
 import { MAX_VIDEO_BYTES, MIN_VIDEO_BYTES, UPLOAD_URL_SECONDS } from "./video.ts";
@@ -477,6 +479,90 @@ describe.each(dialects)("%s video upload", (dialect: Dialect) => {
       expect((await submit(s)).body.error.code).toBe("registration_closed");
       await openRegistration();
       expect((await submit(s)).status).toBe(200);
+    });
+  });
+  describe("confirmation e-mail after submitting (owner, 2026-11-13)", () => {
+    const mailOn = testConfig({ PUBLIC_ORIGINS: SITE, TRUST_PROXY_HOPS: "1", ARGON2_MEMORY_KIB: "1024", ARGON2_PASSES: "1", RIO_UPLOADS_ENABLED: "yes", RIO_EMAIL_ENABLED: "yes" });
+    const sent: EmailMessage[] = [];
+    const answers: SendResult[] = [];
+    const mailer = { send: async (m: EmailMessage) => (sent.push(m), answers.shift() ?? { ok: true as const }) };
+    let kicks = 0;
+    let mailBase = "";
+    const notifier = () => createNotifier({ db, mailer, now, logger: captureLogger().logger });
+    beforeAll(async () => {
+      const server = createServer(createApp({ config: mailOn, logger: captureLogger().logger, state: { shuttingDown: false }, db, now, video: bucket.store, notify: () => void kicks++ }));
+      servers.push(server);
+      mailBase = await listen(server);
+    });
+    beforeEach(() => {
+      sent.length = 0;
+      answers.length = 0;
+    });
+
+    async function registerWithEmail(email: string | null, at = mailBase): Promise<Session> {
+      const r = await call("/api/v1/registrations", {
+        at,
+        method: "POST",
+        body: {
+          eventSlug: "malalai-mozhi", childName: "Asha Kumar", childAge: 6, guardianName: "Priya Kumar", guardianEmail: email,
+          guardianMobile: `9${String(10_000_000 + ++counter).padStart(9, "0")}`, guardianConsent: { accepted: true, version: "v1" },
+        },
+      });
+      expect(r.status, r.text).toBe(201);
+      return { cookie: r.cookie!, csrf: r.body.csrfToken as string, reference: r.body.reference as string };
+    }
+    async function submitted(email: string | null, at = mailBase): Promise<Session> {
+      const s = await registerWithEmail(email, at);
+      await uploaded(s, 2 * MB, 45);
+      const r = await call("/api/v1/registrations/current/submit", { at, method: "POST", cookie: s.cookie, csrf: s.csrf, body: { confirm: true } });
+      expect(r.status, r.text).toBe(200);
+      return s;
+    }
+    const outboxOf = async (s: Session) =>
+      (await sql<{ status: string; attempts: number; last_error: string | null; next_attempt_at: unknown }>("SELECT status, attempts, last_error, next_attempt_at FROM email_outbox WHERE submission_id = ?", [await submissionOf(s)])).rows;
+
+    it("queues one confirmation with the submission, sends it once to the parent's address, with the reference and no mobile number", async () => {
+      const before = kicks;
+      const s = await submitted("parent@example.org");
+      expect(kicks).toBe(before + 1); // sending starts right after the submission
+      expect((await outboxOf(s)).map((r) => r.status)).toEqual(["pending"]);
+      await notifier().deliverDue();
+      const mine = sent.filter((m) => m.subject.includes(s.reference));
+      expect(mine).toHaveLength(1);
+      expect(mine[0]!.to).toBe("parent@example.org");
+      expect(mine[0]!.text).toContain("Asha Kumar is registered successfully.");
+      expect(mine[0]!.text).toContain("மழலை மொழி / Toddler Tamil");
+      expect(mine[0]!.html).toContain(s.reference);
+      expect(mine[0]!.text + mine[0]!.html).not.toMatch(/\+91|9\d{9}|videos\/|pending\//); // no mobile number, no storage key
+      expect((await outboxOf(s)).map((r) => [r.status, Number(r.attempts)])).toEqual([["sent", 1]]);
+      // a repeated Submit press and a second pass send nothing more
+      await call("/api/v1/registrations/current/submit", { at: mailBase, method: "POST", cookie: s.cookie, csrf: s.csrf, body: { confirm: true } });
+      await notifier().deliverDue();
+      expect(sent.filter((m) => m.subject.includes(s.reference))).toHaveLength(1);
+      expect(await outboxOf(s)).toHaveLength(1);
+    });
+
+    it("queues nothing without an address, or while e-mail is switched off", async () => {
+      expect(await outboxOf(await submitted(null))).toEqual([]);
+      expect(await outboxOf(await submitted("parent@example.org", base))).toEqual([]); // the server without RIO_EMAIL_ENABLED
+    });
+
+    it("a failure waits and is retried; a refusal that cannot change is given up at once", async () => {
+      const s = await submitted("parent@example.org");
+      answers.push({ ok: false, retryable: true });
+      await notifier().deliverDue();
+      const [failed] = await outboxOf(s);
+      expect([failed!.status, Number(failed!.attempts), failed!.last_error]).toEqual(["failed", 1, "transient"]);
+      await notifier().deliverDue(); // not due yet: nothing is sent
+      expect(sent.filter((m) => m.subject.includes(s.reference))).toHaveLength(1);
+      clock.t += 2 * 60_000;
+      await notifier().deliverDue();
+      expect((await outboxOf(s)).map((r) => [r.status, Number(r.attempts)])).toEqual([["sent", 2]]);
+
+      const refused = await submitted("parent@example.org");
+      answers.push({ ok: false, retryable: false });
+      await notifier().deliverDue();
+      expect((await outboxOf(refused)).map((r) => [r.status, r.last_error])).toEqual([["abandoned", "permanent"]]);
     });
   });
 });
