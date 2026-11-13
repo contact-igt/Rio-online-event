@@ -253,7 +253,9 @@ describe.each(dialects)("%s anonymous registration", (dialect: Dialect) => {
     it("creates a draft with no account: a reference, a recovery code, an HttpOnly cookie and the entry back", async () => {
       const r = await create({ guardianEmail: "Parent@Example.ORG " });
       expect(r.status).toBe(201);
-      expect(r.body.reference).toMatch(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+      expect(r.body.reference).toMatch(/^RIO\d{4,}$/);
+      const next = await create();
+      expect(Number(next.body.reference!.slice(3))).toBe(Number(r.body.reference!.slice(3)) + 1); // a running number: the next entry is the next number
       expect(r.body.recoveryCode).toMatch(/^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$/);
       expect(r.body.csrfToken).toBeTruthy();
       const view = r.body.registration!;

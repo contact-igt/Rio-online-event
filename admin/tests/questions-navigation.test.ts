@@ -52,7 +52,7 @@ describe("Questions navigation", () => {
     const published = { ...competition("kutti-pesalar", "Little Speakers"), published: { id: 7, version: 3, questionCount: 5 } };
     const html = renderToStaticMarkup(createElement(CompetitionLinks, { competitions: [published, competition("katturai", "Essay")] }));
     const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
-    expect(hrefs).toEqual(["/admin/events/kutti-pesalar/questions", "/admin/events/katturai/questions"]);
+    expect(hrefs).toEqual(["/admin/events/kutti-pesalar", "/admin/events/katturai"]);
     expect(html).toContain("Little Speakers");
     expect(html).toContain("v3 Published (5 Qs)");
     expect(html).toContain("No questions yet");

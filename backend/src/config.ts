@@ -45,6 +45,14 @@ export type UploadsConfig = {
   /** The private bucket, or null unless all four R2 settings are present and well-formed. Secret: never log it. */
   r2: R2Config | null;
 };
+/** The confirmation e-mail sent after a registration is submitted (owner, 2026-11-13), through Resend's HTTPS API. */
+export type ResendConfig = { apiKey: string; from: string; replyTo: string | null };
+export type EmailConfig = {
+  /** RIO_EMAIL_ENABLED is exactly "yes". */
+  enabled: boolean;
+  /** Null unless RESEND_API_KEY and RIO_EMAIL_FROM are present and well-formed. Secret: never log it. */
+  resend: ResendConfig | null;
+};
 export type Config = {
   env: "development" | "test" | "production";
   host: string;
@@ -58,6 +66,8 @@ export type Config = {
   registration: RegistrationConfig;
   /** Video uploads to the private R2 bucket. Available only when enabled AND configured; anything else means off (fail closed, no crash). */
   uploads: UploadsConfig;
+  /** Confirmation e-mail. Sent only when enabled AND configured; otherwise queued messages simply wait (fail closed, no crash). */
+  email: EmailConfig;
 };
 
 export class ConfigError extends Error {
@@ -134,6 +144,10 @@ const schema = z
     R2_ACCESS_KEY_ID: z.string().max(300).optional(),
     R2_SECRET_ACCESS_KEY: z.string().max(300).optional(),
     R2_BUCKET_NAME: z.string().max(300).optional(),
+    RIO_EMAIL_ENABLED: z.string().max(10).optional(),
+    RESEND_API_KEY: z.string().max(300).optional(),
+    RIO_EMAIL_FROM: z.string().max(300).optional(),
+    RIO_EMAIL_REPLY_TO: z.string().max(300).optional(),
   })
   .superRefine((env, ctx) => {
     const fail = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
@@ -203,6 +217,19 @@ function readR2(e: Partial<Record<keyof typeof R2_SHAPES, string | undefined>>):
   return { accountId: v("R2_ACCOUNT_ID"), bucket: v("R2_BUCKET_NAME"), accessKeyId: v("R2_ACCESS_KEY_ID"), secretAccessKey: v("R2_SECRET_ACCESS_KEY") };
 }
 
+const ADDRESS = /^[^\s@<>"',;:\\]+@[^\s@<>"',;:\\]+\.[^\s@<>"',;:\\]{2,}$/;
+
+/** Shapes only, like R2: a Resend key, and a sender "Name <address>" or a bare address. A value is never echoed. */
+function readResend(e: { RESEND_API_KEY?: string | undefined; RIO_EMAIL_FROM?: string | undefined; RIO_EMAIL_REPLY_TO?: string | undefined }): ResendConfig | null {
+  const apiKey = e.RESEND_API_KEY?.trim() ?? "";
+  const from = e.RIO_EMAIL_FROM?.trim() ?? "";
+  const replyTo = e.RIO_EMAIL_REPLY_TO?.trim() ?? "";
+  const named = /^([^<>\r\n"]{1,100}) <([^<>\s]+)>$/.exec(from);
+  const sender = named ? named[2]! : from;
+  if (!/^re_[A-Za-z0-9_]{10,200}$/.test(apiKey) || !ADDRESS.test(sender) || (replyTo !== "" && !ADDRESS.test(replyTo))) return null;
+  return { apiKey, from, replyTo: replyTo === "" ? null : replyTo };
+}
+
 export function loadConfig(source: Record<string, string | undefined>): Config {
   // An empty value counts as "not set" (hosting dashboards often leave blanks).
   const present = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ""));
@@ -241,5 +268,6 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
       tokenTtlMs: e.REGISTRATION_TOKEN_DAYS * 86_400_000,
     },
     uploads: { enabled: e.RIO_UPLOADS_ENABLED === "yes", r2: readR2(e) },
+    email: { enabled: e.RIO_EMAIL_ENABLED === "yes", resend: readResend(e) },
   };
 }

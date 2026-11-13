@@ -25,44 +25,40 @@ describe("Assign Judges page refinement", () => {
 
 describe("Scoring page refinement", () => {
   const page = read("app/admin/scoring/page.tsx");
-  const readiness = read("components/admin/api-not-ready.tsx");
+  const detail = read("app/admin/scoring/[slug]/page.tsx");
 
-  it("uses the approved page shell and a page-specific bilingual readiness workspace", () => {
-    expect(page).toContain("ApiNotReady");
-    expect(page).toContain('eyebrow="Scoring management"');
-    expect(page).toContain('title="Scoring"');
-    expect(page).toContain('titleTa="மதிப்பீடுகள்"');
-    expect(page).toContain('messageEn="Scoring management is not available yet."');
-    expect(readiness).toContain("eyebrow");
-    expect(readiness).toContain("messageEn");
+  // Scoring now reads the API's ranking (merged from dev, 2026-11-13): the placeholder is gone, the page shell stays the approved one.
+  it("uses the approved page shell with a bilingual title", () => {
+    expect(page).toContain('className="eyebrow"');
+    expect(page).toContain("Scoring management");
+    expect(page).toContain("மதிப்பீடுகள்");
+    expect(detail).toContain('className="eyebrow mt-2"');
   });
 
-  it("keeps the existing auth and competition read without inventing scoring controls", () => {
+  it("reads real scoring data behind the administrator check and never edits scores", () => {
     expect(page).toContain('requireStaff("admin")');
-    expect(page).toContain("loadCompetitions()");
-    expect(page).not.toContain("loadScores");
-    expect(page).not.toContain("Publish");
-    expect(page).not.toContain("<table");
+    expect(page).toContain("loadScoringOverview()");
+    expect(detail).toContain("loadRanking(slug)");
+    expect(page + detail).not.toMatch(/saveScore|PUT|unlock/);
   });
 });
 
 describe("Results page refinement", () => {
   const page = read("app/admin/results/page.tsx");
+  const detail = read("app/admin/results/[slug]/page.tsx");
 
-  it("uses the approved page shell and a page-specific bilingual readiness workspace", () => {
-    expect(page).toContain("ApiNotReady");
-    expect(page).toContain('eyebrow="Results management"');
-    expect(page).toContain('title="Results"');
-    expect(page).toContain('titleTa="முடிவுகள்"');
-    expect(page).toContain('messageEn="Results management is not available yet."');
+  it("uses the approved page shell with a bilingual title", () => {
+    expect(page).toContain('className="eyebrow"');
+    expect(page).toContain("Results management");
+    expect(page).toContain("முடிவுகள்");
   });
 
-  it("keeps the existing auth and competition read without adding result publication behavior", () => {
+  it("chooses winners by hand and never publishes: publication stays the Event Settings time", () => {
     expect(page).toContain('requireStaff("admin")');
-    expect(page).toContain("loadCompetitions()");
-    expect(page).not.toContain("loadSettings");
-    expect(page).not.toContain("publishResults");
-    expect(page).not.toContain("<table");
+    expect(page).toContain("loadResultsOverview()");
+    expect(detail).toContain("approveWinnerAction");
+    expect(detail).toContain('name="confirm"');
+    expect(page + detail).not.toMatch(/publishResults|results_publish_at/);
   });
 });
 

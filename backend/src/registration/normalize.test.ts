@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { csrfFor } from "../auth/tokens.ts";
 import { checkAnswer, missingRequired, type Question } from "./answers.ts";
-import { canonicalCode, newEntryReference, newRecoveryCode, registrationCsrf, showRecoveryCode } from "./codes.ts";
+import { canonicalCode, newRecoveryCode, nextEntryReference, registrationCsrf, showRecoveryCode } from "./codes.ts";
 import { cleanEmail, cleanText, nameKey, parseMobile, parseName } from "./normalize.ts";
 
 const COMPOSED = "கொ"; // KA + vowel sign O
@@ -74,8 +74,14 @@ describe("recovery codes and references", () => {
     for (const c of codes) expect(c).toMatch(/^[0-9A-HJKMNP-TV-Z]{24}$/);
   });
 
-  it("makes 10-character references that satisfy the database's entry_code rule", () => {
-    for (let i = 0; i < 100; i++) expect(newEntryReference()).toMatch(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+  it("numbers entries RIO0001, RIO0002, ... after the highest existing number, ignoring the older random references", () => {
+    expect(nextEntryReference([])).toBe("RIO0001");
+    expect(nextEntryReference(["C9S46TE9QR", "VMSGKYNSKC"])).toBe("RIO0001"); // random ones never look like RIO + digits
+    expect(nextEntryReference(["RIO0001", "RIO0007", "RIO0003"])).toBe("RIO0008");
+    expect(nextEntryReference(["RIO9999"])).toBe("RIO10000");
+    expect(nextEntryReference(["RIO0002"], 2)).toBe("RIO0005"); // a retry after a clash moves on
+    expect(nextEntryReference(["RIOSCOREA1", "RIO12AB"])).toBe("RIO0001"); // not RIO + digits: ignored
+    for (const r of [nextEntryReference([]), nextEntryReference(["RIO9999"])]) expect(r).toMatch(/^[A-Z0-9]{6,16}$/); // the database's entry_code rule
   });
 
   it("shows a code in six groups of four and reads it back however it was typed", () => {

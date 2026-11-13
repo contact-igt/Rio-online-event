@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useFinish } from "@/components/registration/use-finish";
 import { saveDraft, type SaveState } from "@/app/events/[slug]/register/actions";
 import { Bilingual, FieldError } from "@/components/auth/bilingual";
 import { SubmitButton } from "@/components/auth/submit-button";
@@ -28,6 +29,9 @@ type Props = {
   draft: FormDraft | null;
   action?: (prev: SaveState, formData: FormData) => Promise<SaveState>;
   initialState?: SaveState;
+  /** The real page: one Submit saves the details, uploads the chosen video and submits the entry. Without it (the dev preview) the form
+   *  only runs `action`. `hasVideo`: the saved draft already has its video. `uploadsOpen`: the API accepts uploads now. */
+  finish?: { hasVideo: boolean; uploadsOpen: boolean };
 };
 
 const inputBase =
@@ -58,8 +62,10 @@ function SectionTitle({ m, number }: { icon?: IconName; m: Msg; number: number }
   );
 }
 
-export function RegistrationForm({ event, questions = [], consent, draft, action: submitAction = saveDraft, initialState }: Props) {
-  const [state, action] = useActionState(submitAction, initialState);
+export function RegistrationForm({ event, questions = [], consent, draft, action: submitAction = saveDraft, initialState, finish }: Props) {
+  const [actionState, action] = useActionState(submitAction, initialState);
+  const f = useFinish(finish?.hasVideo ?? false, draft !== null);
+  const state = finish ? f.form : actionState;
   const v = state?.values;
   const initialAge = draft ? String(draft.childAge) : "";
   const age = v?.childAge ?? initialAge;
@@ -69,7 +75,20 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
   const aria = (f: Field) => ({ "aria-invalid": Boolean(err(f)), "aria-describedby": err(f) ? `${f}-error` : undefined });
 
   return (
-    <form action={action} noValidate className="space-y-8">
+    <form
+      action={finish ? undefined : action}
+      onSubmit={
+        finish
+          ? (e) => {
+              e.preventDefault();
+              void f.run(new FormData(e.currentTarget));
+            }
+          : undefined
+      }
+      noValidate
+      aria-busy={f.busy}
+      className="space-y-8"
+    >
       <input type="hidden" name="event" value={event.slug} />
       <input type="hidden" name="consentVersion" value={consent.version} />
       {draft && <input type="hidden" name="draftId" value={draft.id} />}
@@ -332,9 +351,11 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
         </section>
       )}
 
-      {/* 4. DECLARATION & CONSENT */}
+      {finish && <VideoSection number={questions.length > 0 ? 4 : 3} finish={finish} f={f} />}
+
+      {/* DECLARATION & CONSENT */}
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-xs">
-        <SectionTitle number={questions.length > 0 ? 4 : 3} icon="check" m={reg.form.consentTitle} />
+        <SectionTitle number={(questions.length > 0 ? 4 : 3) + (finish ? 1 : 0)} icon="check" m={reg.form.consentTitle} />
 
         {editing ? (
           <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 font-semibold text-emerald-800 flex items-center gap-2">
@@ -389,13 +410,118 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
 
       {state?.error && <FieldError id="form-error" m={state.error} />}
 
-      {/* ONE-TIME SUBMIT BUTTON */}
-      <div className="pt-2">
-        <SubmitButton
-          idle={{ ta: "பதிவு செய்", en: "Submit Registration" }}
-          busy={{ ta: "பதிவு செய்யப்படுகிறது…", en: "Submitting registration…" }}
-        />
-      </div>
+      {finish ? (
+        <FinishButton f={f} disabled={!finish.uploadsOpen && !finish.hasVideo} />
+      ) : (
+        <div className="pt-2">
+          <SubmitButton
+            idle={{ ta: "பதிவு செய்", en: "Submit Registration" }}
+            busy={{ ta: "பதிவு செய்யப்படுகிறது…", en: "Submitting registration…" }}
+          />
+        </div>
+      )}
     </form>
+  );
+}
+
+type Finish = ReturnType<typeof useFinish>;
+
+/** The one video of the entry: chosen and checked here, uploaded when the parent presses Submit. */
+function VideoSection({ number, finish, f }: { number: number; finish: { hasVideo: boolean; uploadsOpen: boolean }; f: Finish }) {
+  const ready = f.picked;
+  return (
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-xs">
+      <SectionTitle number={number} m={reg.finish.videoTitle} />
+      <p className="text-sm text-rio-slate">
+        <Bilingual m={reg.upload.rules} />
+      </p>
+      {f.uploaded ? (
+        <p role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 font-semibold text-emerald-800">
+          <Icon name="check" className="h-5 w-5 shrink-0" />
+          <Bilingual m={reg.upload.done} />
+        </p>
+      ) : !finish.uploadsOpen ? (
+        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+          <Bilingual m={reg.finish.uploadsOff} />
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <input
+            id="video-file"
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm"
+            disabled={f.busy}
+            aria-describedby={f.videoError ? "video-error" : undefined}
+            onChange={(e) => {
+              void f.pick(e.target.files?.[0]);
+              e.target.value = ""; // picking the same file again must still fire a change
+            }}
+            className="peer sr-only"
+          />
+          <label
+            htmlFor="video-file"
+            className={`btn btn-outline w-full cursor-pointer sm:w-auto peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-rio-blue ${f.busy ? "pointer-events-none opacity-75" : ""}`}
+          >
+            <span>{(ready ? reg.upload.chooseOther : reg.upload.choose).ta}</span>
+            <span lang="en" className="font-medium">{(ready ? reg.upload.chooseOther : reg.upload.choose).en}</span>
+          </label>
+          {f.phase.kind === "checking" && (
+            <p role="status" className="font-semibold text-rio-navy">
+              <Bilingual m={reg.upload.checking} />
+            </p>
+          )}
+          {ready && (
+            <p className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+              <Icon name="check" className="mt-0.5 h-5 w-5 shrink-0" />
+              <span className="min-w-0 break-words">
+                {ready.file.name}
+                <span className="block font-medium">
+                  <Bilingual m={reg.finish.picked(ready.seconds, (ready.file.size / (1024 * 1024)).toFixed(1))} />
+                </span>
+              </span>
+            </p>
+          )}
+        </div>
+      )}
+      {f.videoError && <FieldError id="video-error" m={f.videoError} />}
+    </section>
+  );
+}
+
+/** One button for the whole entry, with what is happening right now shown above it. */
+function FinishButton({ f, disabled }: { f: Finish; disabled: boolean }) {
+  const p = f.phase;
+  const now: Msg | null =
+    p.kind === "saving" ? reg.finish.saving
+    : p.kind === "uploading" ? reg.upload.uploading(p.pct)
+    : p.kind === "verifying" ? reg.upload.verifying
+    : p.kind === "submitting" ? reg.submit.submitting
+    : null;
+  return (
+    <div className="space-y-3 pt-2">
+      {/* A video problem shows under the video AND here, next to the button the parent just pressed. */}
+      {(f.error ?? f.videoError) && <FieldError id="finish-error" m={(f.error ?? f.videoError)!} />}
+      <p className="rounded-xl border-l-4 border-rio-pink bg-rio-blush p-3 text-sm font-semibold text-rio-navy">
+        <Bilingual m={reg.submit.final} />
+      </p>
+      {p.kind === "uploading" && <progress value={p.pct} max={100} aria-label={reg.upload.uploading(p.pct).en} className="h-3 w-full accent-rio-rose" />}
+      {now && (
+        <p role="status" className="font-semibold text-rio-navy">
+          <Bilingual m={now} />
+          <span className="block text-sm font-medium text-rio-slate">
+            <Bilingual m={reg.finish.stay} />
+          </span>
+        </p>
+      )}
+      {p.kind === "done" && (
+        <p role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4 font-display text-xl font-bold text-rio-ok">
+          {reg.submit.doneTitle.ta} <span lang="en" className="font-medium">/ {reg.submit.doneTitle.en}</span>
+        </p>
+      )}
+      <button type="submit" disabled={disabled || f.busy || p.kind === "done"} aria-busy={f.busy} className="btn btn-primary w-full">
+        <span>{reg.finish.submit.ta}</span>
+        <span lang="en" className="font-medium">{reg.finish.submit.en}</span>
+      </button>
+    </div>
   );
 }

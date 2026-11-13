@@ -3,11 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bilingual } from "@/components/auth/bilingual";
 import { DetailsSummary } from "@/components/registration/details-summary";
-import { NextSteps, type UploadStep } from "@/components/registration/next-steps";
 import { RegistrationForm } from "@/components/registration/registration-form";
-import { SubmitEntry } from "@/components/registration/submit-entry";
+import { SubmittedPanel } from "@/components/registration/submitted-panel";
 import { Icon, eventIcon } from "@/components/ui/icon";
-import { registerPath } from "@/lib/auth/paths";
 import { getEvent, rules } from "@/lib/events";
 import { consentActivationState, getConsentCopy } from "@/lib/registration/consent";
 import { currentRegistration, publicEvents, publicSettings, type PublicEvent } from "@/lib/registration/express";
@@ -40,9 +38,8 @@ function eventFor(slug: string, remote: PublicEvent) {
   return { ...local, nameTa: remote.nameTa, nameEn: remote.nameEn, minAge: remote.minAge, maxAge: remote.maxAge };
 }
 
-export default async function RegisterPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ edit?: string; saved?: string }> }) {
+export default async function RegisterPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const query = (await searchParams) ?? {};
   const local = getEvent(slug);
   if (!local) notFound();
 
@@ -60,27 +57,11 @@ export default async function RegisterPage({ params, searchParams }: { params: P
     settings?.guardianConsentVersion !== undefined &&
     consentActivationState(settings.guardianConsentVersion) === "unavailable";
   const consent = !consentUnavailable && settings?.guardianConsentVersion ? getConsentCopy(settings.guardianConsentVersion) : null;
-  const editable = view?.editable === true;
-  // One sitting (owner, 2026-11-12): before saving, the form; after saving, a short summary with "Edit details" and the video step straight
-  // after it; after submitting, the summary only. The form comes back for a saved draft only when the parent asks (?edit=1).
-  const editing = Boolean(view && editable && query.edit === "1");
-  const justSaved = Boolean(view && editable && !editing && query.saved === "1");
-  // The upload step: an attached video is always shown (it is final); a draft without one may upload only while the API says uploads are open.
-  const upload: UploadStep = view?.video?.uploaded ? { kind: "on", hasVideo: true } : editable && settings?.videoUploads ? { kind: "on", hasVideo: false } : { kind: "off" };
-  // The last step of the one sitting: submit, once the video is attached. Finalized and held look the same to the parent.
+  // One page, one button (owner, 2026-11-13): the details, the video and the consent box, then Submit saves, uploads and submits. A draft
+  // left unfinished (the connection dropped, say) opens the same form, filled in, with its video if it has one. Once submitted, the summary
+  // only. Finalized and held look the same to the parent.
   const submitted = view?.status === "finalized" || view?.status === "held";
-  const submit = submitted ? (
-    <div role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4">
-      <p className="font-display text-xl font-bold text-rio-ok">
-        {reg.submit.doneTitle.ta} <span lang="en" className="font-medium">/ {reg.submit.doneTitle.en}</span>
-      </p>
-      <p className="mt-1">
-        <Bilingual m={reg.submit.doneBody} />
-      </p>
-    </div>
-  ) : view?.video?.uploaded && editable && settings?.videoUploads ? (
-    <SubmitEntry childName={view.child.name} childAge={view.child.age} eventNameTa={event.nameTa} eventNameEn={event.nameEn} mediaConsent={view.consent.media.granted === true} />
-  ) : undefined;
+  const formShown = Boolean(open && consent && questionSet && (!view || view.editable));
 
   const draft = view
     ? {
@@ -175,34 +156,37 @@ export default async function RegisterPage({ params, searchParams }: { params: P
             </div>
           )}
 
-          {/* MAIN REGISTRATION FORM (Clean 1-by-1 Stacked Layout) */}
-          {justSaved && (
-            <p role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4 font-semibold text-rio-ok">
-              {(view?.video?.uploaded ? reg.summary.savedAgain : reg.summary.saved).ta}
-              <span lang="en" className="block font-medium">{(view?.video?.uploaded ? reg.summary.savedAgain : reg.summary.saved).en}</span>
-            </p>
+          {submitted && view && (
+            // The success page (owner, 2026-11-13: "You have been registered successfully"). No e-mail is promised: none is sent yet.
+            <SubmittedPanel
+              focus
+              childName={view.child.name}
+              childAge={view.child.age}
+              eventNameTa={event.nameTa}
+              eventNameEn={event.nameEn}
+              submittedAt={view.updatedAt}
+              mediaConsent={view.consent.media.granted === true}
+              emailMasked={null}
+              reference={view.reference}
+            />
           )}
 
-          {view && !editing && <DetailsSummary view={view} editHref={editable && open && consent ? `${registerPath(event.slug)}?edit=1#details` : null} />}
+          {view && !formShown && <DetailsSummary view={view} editHref={null} />}
 
-          {open && consent && questionSet && (!view || editing) && (
+          {formShown && consent && questionSet && (
             <div id="details" className="mt-6 scroll-mt-4">
-              {editing && (
-                <Link href={registerPath(event.slug)} className="mb-3 inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">
-                  ← {reg.summary.cancelEdit.ta} / <span lang="en" className="ml-1">{reg.summary.cancelEdit.en}</span>
-                </Link>
-              )}
+              {/* The same key before and after the first save: saving sets the registration cookie, the page re-renders with the new draft,
+                  and the form must keep the chosen video and carry on to the upload instead of starting over. */}
               <RegistrationForm
-                key={view?.reference ?? "new"}
+                key="entry"
                 event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }}
                 questions={questionSet.questions}
                 consent={{ version: consent.version, notice: consent.notice, guardian: consent.guardian, media: consent.media }}
                 draft={draft}
+                finish={{ hasVideo: view?.video?.uploaded === true, uploadsOpen: settings?.videoUploads === true }}
               />
             </div>
           )}
-
-          {view && <NextSteps upload={upload} submit={submit} />}
 
           {!view && remote.questionSet === null && (
             <p className="rounded-2xl bg-white border border-slate-200 p-5 text-center text-rio-slate shadow-xs">

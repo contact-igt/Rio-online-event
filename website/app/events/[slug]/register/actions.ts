@@ -1,6 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { registerPath } from "@/lib/auth/paths";
 import { getEvent } from "@/lib/events";
@@ -10,9 +9,8 @@ import { parseEventSlug } from "@/lib/auth/schemas";
 import { normalizeMobile } from "@/lib/registration/schemas";
 
 type Answers = Record<string, string | number | string[] | null>;
-export type SaveState = { error?: Msg; fieldErrors?: Partial<Record<string, Msg>>; duplicateId?: string; values?: Record<string, string>; answers?: Answers; recoveryCode?: string } | undefined;
-
-const noticeCookie = "rio_recovery_notice";
+// `saved` means the details are stored (a new entry, or the open draft updated); the one-page form then goes on to the video and submission.
+export type SaveState = { saved?: true; error?: Msg; fieldErrors?: Partial<Record<string, Msg>>; duplicateId?: string; values?: Record<string, string>; answers?: Answers } | undefined;
 
 const problemMessage = (field: string, problem: string): Msg => {
   if (field === "childName" || field === "guardianName") return reg.errors.name;
@@ -140,7 +138,7 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
       return { error: reg.errors.unavailable, values: raw };
     }
     if (result.status !== 200) return failure(result, raw, answers);
-    redirect(`${registerPath(event.slug)}?saved=1#next-steps`);
+    return { saved: true };
   }
   let result;
   try {
@@ -149,9 +147,7 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
     return { error: reg.errors.unavailable, values: raw, answers };
   }
   if (result.status !== 201 || !result.body) return failure(result, raw, answers);
-  const jar = await cookies();
-  jar.set(noticeCookie, result.body.recoveryCode, { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 300 });
-  redirect(`${registerPath(event.slug)}?saved=1#next-steps`);
+  return { saved: true }; // the API set the registration cookie, so the video and the submission that follow open this entry
 }
 
 export async function recoverDraft(_prev: SaveState, formData: FormData): Promise<SaveState> {

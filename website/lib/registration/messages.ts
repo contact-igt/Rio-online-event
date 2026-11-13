@@ -91,6 +91,16 @@ export const reg = {
     notAnswered: { ta: "பதில் இல்லை", en: "Not answered" },
     locked: { ta: "சமர்ப்பித்த பின் விவரங்களை மாற்ற முடியாது.", en: "Details cannot be changed after the entry is submitted." },
   },
+  // One page, one button (owner, 2026-11-13): details, the video and the consent box, then Submit saves, uploads and submits in one go.
+  finish: {
+    videoTitle: { ta: "போட்டி வீடியோ", en: "Competition video" },
+    videoNeeded: { ta: "சமர்ப்பிக்கும் முன் வீடியோவைத் தேர்ந்தெடுங்கள்.", en: "Choose the video before you submit." },
+    picked: (seconds: number, mb: string): Msg => ({ ta: `தேர்ந்தெடுத்த வீடியோ: ${seconds} வினாடிகள் · ${mb} MB. சமர்ப்பிக்கும்போது பதிவேற்றப்படும்.`, en: `Video chosen: ${seconds} seconds · ${mb} MB. It uploads when you submit.` }),
+    saving: { ta: "விவரங்களைச் சேமிக்கிறது…", en: "Saving your details…" },
+    submit: { ta: "பதிவைச் சமர்ப்பி", en: "Submit entry" },
+    stay: { ta: "முடியும் வரை இந்தப் பக்கத்திலேயே இருங்கள்.", en: "Stay on this page until it finishes." },
+    uploadsOff: { ta: "வீடியோ பதிவேற்றம் தற்போது கிடைக்கவில்லை, அதனால் இப்போது சமர்ப்பிக்க முடியாது. சிறிது நேரம் கழித்து முயலுங்கள்.", en: "Video upload is not available right now, so entries cannot be submitted yet. Please try again later." },
+  },
   nextSteps: {
     title: { ta: "அடுத்த படிகள்", en: "Next steps" },
     upload: { ta: "வீடியோவைப் பதிவேற்று", en: "Upload video" },
@@ -121,6 +131,8 @@ export const reg = {
     submitting: { ta: "சமர்ப்பிக்கிறது…", en: "Submitting…" },
     retry: { ta: "மீண்டும் முயல்க", en: "Try again" },
     doneTitle: { ta: "பதிவு சமர்ப்பிக்கப்பட்டது", en: "Entry submitted" },
+    registered: { ta: "பதிவு வெற்றிகரமாக முடிந்தது!", en: "You are registered successfully!" },
+    keepReference: { ta: "இந்தக் குறிப்பு எண்ணைக் குறித்து வைத்துக்கொள்ளுங்கள்.", en: "Please keep this reference number." },
     doneBody: { ta: "உங்கள் பதிவு இறுதியாகச் சமர்ப்பிக்கப்பட்டது.", en: "Your entry is final." },
     already: { ta: "இந்தப் பதிவு ஏற்கெனவே சமர்ப்பிக்கப்பட்டுள்ளது.", en: "This entry was already submitted." },
     submitted: { ta: "சமர்ப்பிக்கப்பட்டது", en: "Submitted" },

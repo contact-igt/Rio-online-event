@@ -28,7 +28,7 @@ export function CompetitionLinks({ competitions }: { competitions: Competition[]
         return (
           <li key={c.slug}>
             <Link
-              href={`/admin/events/${c.slug}/questions`}
+              href={`/admin/events/${c.slug}`}
               className="group flex h-full min-h-[170px] flex-col justify-between rounded-2xl border border-rio-navy/10 bg-white p-4 shadow-sm transition hover:border-rio-rose hover:bg-rio-blush/20 hover:shadow-md"
             >
               <div>

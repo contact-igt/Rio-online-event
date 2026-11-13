@@ -20,6 +20,6 @@ export async function saveDraft(_prev: SaveState, formData: FormData): Promise<S
   if (!parsed.ok) return { error: reg.errors.fix, fieldErrors: parsed.errors, values: raw };
   if (raw.childName === "Duplicate Dee") return { error: reg.errors.duplicate, duplicateId: "x", values: raw };
   if (raw.childName === "Failing Fay") return { error: reg.errors.saveFailed, values: raw };
-  (window.__saved ??= []).push(raw); // the real action would insert the row and redirect
-  return undefined;
+  (window.__saved ??= []).push(raw); // the real action would insert or update the row
+  return { saved: true };
 }

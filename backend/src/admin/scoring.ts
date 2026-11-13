@@ -7,7 +7,10 @@ import { rankEntries } from "./ranking.ts";
 // has finalized, and equal averages are flagged as a tie for a person to decide (never broken automatically). Held entries (a possible
 // duplicate waiting for review) are counted but not ranked. Marks are judges' 0 to 10 scores, stored as hundredths.
 
-export type JudgeMark = { judgeName: string; judgeCode: string; marks: number | null; status: "draft" | "final" | "none" };
+/** One judge's mark on one entry, with their comment (the administrator sees comments; the public never does). */
+export type JudgeMark = { judgeName: string; judgeCode: string; marks: number | null; comments: string | null; status: "draft" | "final" | "none" };
+/** Every judge marks out of this; the leaderboard shows totals out of MAX_MARKS times the number of judges. */
+export const MAX_MARKS = 10;
 export type RankingRow = {
   entryCode: string;
   childName: string;
@@ -18,6 +21,9 @@ export type RankingRow = {
   drafts: number;
   complete: boolean;
   average: number | null;
+  /** Sum of the final marks, and what it is out of (MAX_MARKS for each assigned judge). */
+  total: number | null;
+  maxTotal: number;
   rank: number | null;
   tie: boolean;
   judges: JudgeMark[];
@@ -49,8 +55,8 @@ async function rankingFor(db: Queryable, event: { id: number; slug: string; name
     )
   ).rows;
   const scores = (
-    await db.query<{ submission_id: unknown; judge_id: unknown; marks_hundredths: unknown; status: string }>(
-      `SELECT sc.submission_id, sc.judge_id, sc.marks_hundredths, sc.status
+    await db.query<{ submission_id: unknown; judge_id: unknown; marks_hundredths: unknown; comments: string | null; status: string }>(
+      `SELECT sc.submission_id, sc.judge_id, sc.marks_hundredths, sc.comments, sc.status
        FROM scores sc JOIN submissions s ON s.id = sc.submission_id WHERE s.event_id = ?`,
       [event.id],
     )
@@ -69,11 +75,12 @@ async function rankingFor(db: Queryable, event: { id: number; slug: string; name
       .filter((a) => String(a.submission_id) === r.submissionId)
       .map((a) => {
         const s = scores.find((x) => String(x.submission_id) === r.submissionId && String(x.judge_id) === String(a.judge_id));
-        return { judgeName: a.judge_name, judgeCode: a.judge_code, marks: s ? marksOf(s.marks_hundredths) : null, status: s ? (s.status === "final" ? "final" : "draft") : "none" } as JudgeMark;
+        return { judgeName: a.judge_name, judgeCode: a.judge_code, marks: s ? marksOf(s.marks_hundredths) : null, comments: s?.comments ?? null, status: s ? (s.status === "final" ? "final" : "draft") : "none" } as JudgeMark;
       });
     return {
       entryCode: e.entry_code, childName: e.child_name, childAge: n(e.child_age), hasVideo: n(e.has_video) > 0,
-      assigned: r.assigned, finalScores: r.finalScores, drafts: r.drafts, complete: r.complete, average: r.average, rank: r.rank, tie: r.tie, judges,
+      assigned: r.assigned, finalScores: r.finalScores, drafts: r.drafts, complete: r.complete, average: r.average,
+      total: r.total, maxTotal: r.assigned * MAX_MARKS, rank: r.rank, tie: r.tie, judges,
     };
   });
   return {
