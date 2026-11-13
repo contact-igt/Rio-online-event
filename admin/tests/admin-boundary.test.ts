@@ -40,7 +40,9 @@ describe("the secret key", () => {
 
   it("no client component imports the invitation, provisioning, judge-list or admin-loader modules", () => {
     for (const f of files.filter((x) => !isTest(x.path) && /^\s*["']use client["']/.test(x.text))) {
-      expect(f.text, f.path).not.toMatch(/lib\/staff\/invites|lib\/staff\/provisioning|lib\/staff\/judges|lib\/admin\//);
+      // Type-only imports vanish at build time, and lib/admin/format is pure date formatting; neither carries server code to the browser.
+      const runtime = f.text.replace(/^import type .*$/gm, "").replace(/^import .* from "@\/lib\/admin\/format";$/gm, "");
+      expect(runtime, f.path).not.toMatch(/lib\/staff\/invites|lib\/staff\/provisioning|lib\/staff\/judges|lib\/admin\//);
     }
   });
 });
@@ -48,9 +50,9 @@ describe("the secret key", () => {
 describe("judge actions", () => {
   const actions = code("app/admin/judges/actions.ts");
 
-  it("exports exactly these four actions, as server actions that never log", () => {
+  it("exports exactly these actions, as server actions that never log", () => {
     expect(actions).toMatch(/^"use server";/);
-    expect([...actions.matchAll(/^export async function (\w+)/gm)].map((m) => m[1])).toEqual(["inviteJudge", "provisionJudge", "resetJudgePassword", "setJudgeActive"]);
+    expect([...actions.matchAll(/^export async function (\w+)/gm)].map((m) => m[1])).toEqual(["inviteJudge", "provisionJudge", "resetJudgePassword", "setJudgeActive", "updateJudge", "deleteJudge", "restoreJudge", "purgeJudge"]);
     expect(actions).not.toMatch(/console\./);
   });
 
@@ -117,8 +119,8 @@ describe("admin pages and routes", () => {
   it("the sidebar and layout show for a verified administrator only, and the sidebar never links outside the admin area", () => {
     const layout = code("app/admin/layout.tsx");
     expect(layout).toContain('staffSession("admin")');
-    expect(layout).toMatch(/verified && <AdminNav/);
-    for (const href of [...code("components/admin/admin-nav.tsx").matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]!)) expect(href).toMatch(/^\/admin/);
+    expect(layout).toMatch(/verified \? [\s\S]*<AdminNav/);
+    for (const href of [...code("components/admin/admin-nav.tsx").matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]!)) expect(href).toMatch(/^\/admin/);
   });
 });
 

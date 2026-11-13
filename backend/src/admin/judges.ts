@@ -38,7 +38,6 @@ export const assignJudgeSchema = z.strictObject({
 });
 
 const n = (v: unknown): number => Number(v ?? 0);
-const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : asDate(v).toISOString());
 
 export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
 

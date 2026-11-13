@@ -30,8 +30,6 @@ describe.each(dialects)("%s judge management and judging portal", (dialect: Dial
     ARGON2_PASSES: String(COST.passes),
   });
   let counter = 0;
-  // A fake private bucket: it only signs a link for the key it is given.
-  const fakeStore = { presignGet: async (key: string) => `https://bucket.test/${key}?sig=1` } as unknown as VideoStore;
   const sql = <Row = Record<string, unknown>>(text: string, params: readonly (string | number | Date | null)[] = []) =>
     db.query<Row>(text, params);
 
