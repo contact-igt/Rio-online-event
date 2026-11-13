@@ -15,6 +15,8 @@ export type ScoreFormProps = { entryId: string; marks: number | null; comments: 
 type State = { kind: "editing" } | { kind: "confirming" } | { kind: "saving" } | { kind: "saved"; final: boolean } | { kind: "failed"; message: Msg };
 const E = staff.judge.errors;
 const input = "field mt-1 text-sm";
+/** Every judge marks out of 10 (the API refuses anything else). */
+const MAX_MARKS = 10;
 const button = "btn min-h-11 w-full !px-4 text-sm sm:w-auto";
 
 export function ScoreForm(p: ScoreFormProps) {
@@ -33,7 +35,7 @@ export function ScoreForm(p: ScoreFormProps) {
           </p>
         )}
         <div className="space-y-2 rounded-xl border-2 border-rio-navy/15 bg-white p-4">
-          <p className="font-display text-3xl font-bold tabular-nums text-rio-navy">{p.marks} <span className="text-base font-semibold text-rio-slate">/ 10</span></p>
+          <p className="font-display text-3xl font-bold tabular-nums text-rio-navy">{p.marks} <span className="text-base font-semibold text-rio-slate">/ {MAX_MARKS}</span></p>
           {p.comments && <p className="whitespace-pre-wrap text-sm text-rio-ink">{p.comments}</p>}
           <p className="text-sm text-rio-slate">
             <Bilingual m={staff.judge.finalLocked} />
@@ -69,16 +71,24 @@ export function ScoreForm(p: ScoreFormProps) {
         <label htmlFor="marks" className="block text-sm font-semibold text-rio-navy">
           <Bilingual m={staff.judge.marks} />
         </label>
-        <input
-          id="marks"
-          name="marks"
-          inputMode="decimal"
-          autoComplete="off"
-          value={marks}
-          onChange={(e) => setMarks(e.target.value)}
-          className={input}
-          aria-describedby={state.kind === "failed" ? "score-error marks-hint" : "marks-hint"}
-        />
+        {/* A number field with the maximum beside it, so the judge always sees what the mark is out of. The server checks 0 to 10 again. */}
+        <div className="mt-1 flex items-center gap-3">
+          <input
+            id="marks"
+            name="marks"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={MAX_MARKS}
+            step={0.5}
+            autoComplete="off"
+            value={marks}
+            onChange={(e) => setMarks(e.target.value)}
+            className="field w-32 text-center font-display text-2xl font-bold tabular-nums"
+            aria-describedby={state.kind === "failed" ? "score-error marks-hint" : "marks-hint"}
+          />
+          <span className="font-display text-2xl font-bold text-rio-slate" aria-hidden="true">/ {MAX_MARKS}</span>
+        </div>
         <p id="marks-hint" className="mt-1 text-xs text-rio-slate">{staff.judge.scoreRange}</p>
       </div>
       <div>

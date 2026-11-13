@@ -56,7 +56,7 @@ export const staff = {
     viewScore: { ta: "பார்", en: "View score" },
     videoReady: { ta: "வீடியோ உள்ளது", en: "Video ready" },
     videoMissing: { ta: "வீடியோ இல்லை", en: "No video" },
-    scoreRange: "Allowed range 0 to 10, up to two decimals. Leave empty only for a draft.",
+    scoreRange: "A number from 0 to 10, for example 7 or 8.5. Leave empty only for a draft.",
     yourScore: { ta: "உங்கள் மதிப்பெண்", en: "Your score" },
     entryDetails: { ta: "பதிவு விவரங்கள்", en: "Entry details" },
     review: { ta: "பதிவு ஆய்வு", en: "Entry review" },

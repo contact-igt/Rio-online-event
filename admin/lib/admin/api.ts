@@ -206,10 +206,10 @@ export async function requestRegistrationPlaybackApi(entryCode: string, csrf?: s
 // ---- scoring (read only) ---------------------------------------------------------------------------------------------------------------
 export type ScoringSummary = { submitted: number; ranked: number; waiting: number; notAssigned: number; ties: number; heldForReview: number };
 export type ScoringOverview = { competitions: (ScoringSummary & { slug: string; nameTa: string; nameEn: string })[] };
-export type JudgeMark = { judgeName: string; judgeCode: string; marks: number | null; status: "draft" | "final" | "none" };
+export type JudgeMark = { judgeName: string; judgeCode: string; marks: number | null; comments?: string | null; status: "draft" | "final" | "none" };
 export type RankingRow = {
   entryCode: string; childName: string; childAge: number; hasVideo: boolean; assigned: number; finalScores: number; drafts: number;
-  complete: boolean; average: number | null; rank: number | null; tie: boolean; judges: JudgeMark[];
+  complete: boolean; average: number | null; total?: number | null; maxTotal?: number; rank: number | null; tie: boolean; judges: JudgeMark[];
 };
 export type CompetitionRanking = { competition: { slug: string; nameTa: string; nameEn: string }; entries: RankingRow[]; summary: ScoringSummary };
 

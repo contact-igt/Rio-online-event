@@ -103,7 +103,7 @@ describe.each(dialects)("%s admin scoring", (dialect: Dialect) => {
       expect((await score(anu, code, a, true)).status).toBe(200);
       expect((await score(ravi, code, r, true)).status).toBe(200);
     }
-    expect((await score(anu, "RIOSCORED4", 7, true)).status).toBe(200);
+    expect((await call("/api/v1/judge/entries/RIOSCORED4/score", { method: "PUT", who: anu, body: { marks: 7, comments: "Clear voice, short story", final: true } })).status).toBe(200);
     expect((await score(ravi, "RIOSCORED4", 9.75, false)).status).toBe(200); // a draft never counts
 
     const r = await call("/api/v1/admin/competitions/kathai/ranking", { who: admin });
@@ -117,9 +117,11 @@ describe.each(dialects)("%s admin scoring", (dialect: Dialect) => {
       ["RIOSCORED4", null, 7, false, false],
     ]);
     expect(rows[0]).toMatchObject({ childName: "Chitra", childAge: 6, hasVideo: true, assigned: 2, finalScores: 2, drafts: 0 });
+    expect(rows[0]).toMatchObject({ total: 19, maxTotal: 20 }); // 10 + 9 out of 2 judges x 10
+    expect(rows[3]).toMatchObject({ total: 7, maxTotal: 20 }); // the draft does not count
     expect(rows[3]).toMatchObject({ assigned: 2, finalScores: 1, drafts: 1 });
     expect(rows[3]!.judges).toEqual(expect.arrayContaining([
-      expect.objectContaining({ judgeName: "Anu", marks: 7, status: "final" }),
+      expect.objectContaining({ judgeName: "Anu", marks: 7, comments: "Clear voice, short story", status: "final" }),
       expect.objectContaining({ judgeName: "Ravi", marks: 9.75, status: "draft" }),
     ]));
     expect(r.body.summary).toEqual({ submitted: 4, ranked: 3, waiting: 1, notAssigned: 0, ties: 2, heldForReview: 1 });

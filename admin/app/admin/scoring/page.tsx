@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import { loadScoringOverview } from "@/lib/admin/api";
+import { loadRanking, loadScoringOverview } from "@/lib/admin/api";
 import { requireStaff } from "@/lib/staff/auth";
 
 export const metadata: Metadata = { title: "மதிப்பெண் · Scoring", robots: { index: false } };
@@ -11,6 +11,12 @@ export const dynamic = "force-dynamic";
 export default async function AdminScoringPage() {
   await requireStaff("admin");
   const overview = await loadScoringOverview();
+  // The current top three of each competition, so the leaders are visible without opening every leaderboard.
+  const rankings = overview.ok ? await Promise.all(overview.data.competitions.map((c) => loadRanking(c.slug))) : [];
+  const top = (i: number) => {
+    const r = rankings[i];
+    return r?.ok ? r.data.entries.filter((e) => e.complete && e.rank !== null).slice(0, 3) : [];
+  };
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
@@ -39,7 +45,7 @@ export default async function AdminScoringPage() {
         <p className="card mt-6 p-4 text-rio-slate">No competitions yet. <span lang="ta" className="block">இன்னும் போட்டிகள் இல்லை.</span></p>
       ) : (
         <ul className="mt-6 grid gap-4 md:grid-cols-2">
-          {overview.data.competitions.map((c) => (
+          {overview.data.competitions.map((c, i) => (
             <li key={c.slug}>
               <Link href={`/admin/scoring/${c.slug}`} className="card flex h-full min-h-11 flex-col gap-3 p-4 hover:bg-rio-blush sm:p-5">
                 <span>
@@ -60,11 +66,21 @@ export default async function AdminScoringPage() {
                     <dd className="font-display text-xl font-bold text-rio-navy tabular-nums">{c.ties}</dd>
                   </div>
                 </dl>
+                {top(i).length > 0 && (
+                  <ol className="space-y-1 text-sm" aria-label="Top three">
+                    {top(i).map((e) => (
+                      <li key={e.entryCode} className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 truncate text-rio-navy"><strong className="tabular-nums">#{e.rank}</strong> <span className="font-mono">{e.entryCode}</span> · {e.childName}{e.tie ? " · tie" : ""}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-rio-navy">{e.average?.toFixed(2)} / 10</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
                 <span className="text-sm text-rio-slate">
                   {c.waiting} waiting for judges · {c.notAssigned} not assigned{c.heldForReview > 0 ? ` · ${c.heldForReview} held for review` : ""}
                 </span>
                 <span className="mt-auto inline-flex items-center gap-1 font-semibold text-rio-rose">
-                  View ranking / தரவரிசை <Icon name="arrow" className="h-4 w-4" />
+                  View leaderboard / முன்னணிப் பட்டியல் <Icon name="arrow" className="h-4 w-4" />
                 </span>
               </Link>
             </li>
