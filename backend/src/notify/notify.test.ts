@@ -7,14 +7,27 @@ const KEY = "re_test_abcdefghijklmnop";
 
 describe("confirmation e-mail settings", () => {
   it("is off unless switched on, and sends only with a well-formed key and sender", () => {
-    expect(testConfig().email).toEqual({ enabled: false, resend: null });
-    expect(testConfig({ RIO_EMAIL_ENABLED: "yes" }).email).toEqual({ enabled: true, resend: null }); // on, but nothing to send with: messages wait
+    expect(testConfig().email).toEqual({ enabled: false, resend: null, issues: [] });
+    expect(testConfig({ RIO_EMAIL_ENABLED: "yes" }).email).toEqual({ enabled: true, resend: null, issues: ["RESEND_API_KEY is missing", "RIO_EMAIL_FROM is missing"] }); // on, but nothing to send with: messages wait
     expect(testConfig({ RIO_EMAIL_ENABLED: "true", RESEND_API_KEY: KEY, RIO_EMAIL_FROM: "a@b.org" }).email.enabled).toBe(false); // exactly "yes"
     expect(testConfig({ RESEND_API_KEY: KEY, RIO_EMAIL_FROM: "Rio Hospital <events@rio.example>" }).email.resend).toEqual({ apiKey: KEY, from: "Rio Hospital <events@rio.example>", replyTo: null });
     expect(testConfig({ RESEND_API_KEY: KEY, RIO_EMAIL_FROM: "events@rio.example", RIO_EMAIL_REPLY_TO: "help@rio.example" }).email.resend?.replyTo).toBe("help@rio.example");
     for (const bad of [{ RESEND_API_KEY: "not-a-key", RIO_EMAIL_FROM: "a@b.org" }, { RESEND_API_KEY: KEY, RIO_EMAIL_FROM: "nobody" }, { RESEND_API_KEY: KEY, RIO_EMAIL_FROM: "a@b.org", RIO_EMAIL_REPLY_TO: "x" }]) {
       expect(testConfig(bad).email.resend).toBeNull();
     }
+  });
+
+  it("names the wrong setting, never its value, and reads a value pasted with its quotes", () => {
+    const wrong = testConfig({ RIO_EMAIL_ENABLED: "yes", RESEND_API_KEY: "sk_live_secret_value_123", RIO_EMAIL_FROM: "Rio Hospital events@auth.example.org" }).email;
+    expect(wrong.issues).toEqual([
+      "RESEND_API_KEY must be the key Resend shows, starting with re_ (no spaces)",
+      "RIO_EMAIL_FROM must be an address, or a name followed by a space and the address in < >",
+    ]);
+    expect(JSON.stringify(wrong.issues)).not.toMatch(/secret|events@/);
+    const quoted = testConfig({ RIO_EMAIL_ENABLED: "yes", RESEND_API_KEY: `"${KEY}"`, RIO_EMAIL_FROM: "'Rio Hospital <events@auth.example.org>'" }).email;
+    expect(quoted.issues).toEqual([]);
+    expect(quoted.resend).toEqual({ apiKey: KEY, from: "Rio Hospital <events@auth.example.org>", replyTo: null });
+    expect(testConfig({ RIO_EMAIL_ENABLED: "yes", RESEND_API_KEY: "re_abc-DEF_123456789", RIO_EMAIL_FROM: "a@b.org" }).email.resend).not.toBeNull(); // dashes are allowed
   });
 });
 

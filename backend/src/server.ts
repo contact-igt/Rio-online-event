@@ -30,7 +30,7 @@ if (db && config.registration.publicOrigins.length === 0) logger.warn("public_or
 // Names only, never values: uploads and judge playback stay off until all four R2 settings are present and well-formed.
 if (config.uploads.enabled && !config.uploads.r2) logger.warn("video_uploads_enabled_but_r2_not_configured");
 // Confirmation e-mail: queued when RIO_EMAIL_ENABLED=yes, sent only when the Resend settings are present too (names only in the warning).
-if (config.email.enabled && !config.email.resend) logger.warn("confirmation_email_enabled_but_resend_not_configured");
+if (config.email.enabled && !config.email.resend) logger.warn("confirmation_email_enabled_but_resend_not_configured", { problems: config.email.issues });
 const notifier = db && config.email.enabled && config.email.resend ? createNotifier({ db, mailer: resendMailer(config.email.resend), now: () => new Date(), logger }) : undefined;
 // Anything that failed, or was queued while the service was down, is retried every minute.
 const emailSweep = notifier ? setInterval(notifier.kick, 60_000) : undefined;

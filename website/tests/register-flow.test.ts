@@ -82,22 +82,21 @@ describe("registration page, one page and one button", () => {
     expect(html).toContain("&quot;uploadsOpen&quot;:false");
   });
 
-  it("after submitting: the summary only, read only, and no form", async () => {
+  it("after submitting: the success panel only, with the video confirmed, no details list and no form", async () => {
     h.status = "finalized";
     h.video = true;
     h.view = view();
     const html = await render();
     expect(html).not.toContain("FORM");
-    expect(html).toContain("Your details");
-    expect(html).toContain("Asha, 9");
-    expect(html).toContain("Sunshine School");
-    expect(html).not.toContain("Read this"); // an instruction is not an answer
+    expect(html).not.toContain("Your details"); // owner, 2026-11-13: no details list under the success panel
+    expect(html).not.toContain("Sunshine School");
+    expect(html).not.toContain("+919876543210");
+    expect(html).toContain("Uploaded successfully"); // the video is confirmed in the panel
     expect(html).not.toContain("?edit=1");
     expect(html).toContain("You are registered successfully!"); // the success page
     expect(html).toContain("RIOFLOW001"); // the reference, shown large
     expect(html).toContain("Please keep this reference number.");
     expect(html).not.toMatch(/email will be sent/i); // no e-mail is promised: none is sent yet
-    expect(html.indexOf("You are registered successfully!")).toBeLessThan(html.indexOf("Your details"));
     if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/register-done.html`, html);
   });
 });

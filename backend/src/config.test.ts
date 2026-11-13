@@ -32,7 +32,7 @@ describe("loadConfig", () => {
       },
       registration: { publicOrigins: [], tokenTtlMs: 30 * 86_400_000 },
       uploads: { enabled: false, r2: null },
-      email: { enabled: false, resend: null },
+      email: { enabled: false, resend: null, issues: [] },
     });
   });
 

@@ -171,7 +171,9 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
             />
           )}
 
-          {view && !formShown && <DetailsSummary view={view} editHref={null} />}
+          {/* After submitting, the success panel only (owner, 2026-11-13: no details list below it). The list stays for a draft that can no
+              longer be edited, for example when registration closed before it was submitted. */}
+          {view && !formShown && !submitted && <DetailsSummary view={view} editHref={null} />}
 
           {formShown && consent && questionSet && (
             <div id="details" className="mt-6 scroll-mt-4">

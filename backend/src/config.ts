@@ -52,6 +52,8 @@ export type EmailConfig = {
   enabled: boolean;
   /** Null unless RESEND_API_KEY and RIO_EMAIL_FROM are present and well-formed. Secret: never log it. */
   resend: ResendConfig | null;
+  /** When switched on but not usable: which settings are missing or malformed, by NAME only, for the start-up warning. */
+  issues: string[];
 };
 export type Config = {
   env: "development" | "test" | "production";
@@ -219,15 +221,23 @@ function readR2(e: Partial<Record<keyof typeof R2_SHAPES, string | undefined>>):
 
 const ADDRESS = /^[^\s@<>"',;:\\]+@[^\s@<>"',;:\\]+\.[^\s@<>"',;:\\]{2,}$/;
 
-/** Shapes only, like R2: a Resend key, and a sender "Name <address>" or a bare address. A value is never echoed. */
-function readResend(e: { RESEND_API_KEY?: string | undefined; RIO_EMAIL_FROM?: string | undefined; RIO_EMAIL_REPLY_TO?: string | undefined }): ResendConfig | null {
-  const apiKey = e.RESEND_API_KEY?.trim() ?? "";
-  const from = e.RIO_EMAIL_FROM?.trim() ?? "";
-  const replyTo = e.RIO_EMAIL_REPLY_TO?.trim() ?? "";
+/** A value pasted with its quotes ("re_..." or 'Rio <a@b.org>') is read without them: hosting dashboards keep quotes literally. */
+const unquote = (v: string | undefined) => (v ?? "").trim().replace(/^(["'])(.*)\1$/s, "$2").trim();
+
+/** Shapes only, like R2: a Resend key, and a sender "Name <address>" or a bare address. A value is never echoed; `issues` names the setting. */
+function readResend(e: { RESEND_API_KEY?: string | undefined; RIO_EMAIL_FROM?: string | undefined; RIO_EMAIL_REPLY_TO?: string | undefined }): { resend: ResendConfig | null; issues: string[] } {
+  const apiKey = unquote(e.RESEND_API_KEY);
+  const from = unquote(e.RIO_EMAIL_FROM);
+  const replyTo = unquote(e.RIO_EMAIL_REPLY_TO);
   const named = /^([^<>\r\n"]{1,100}) <([^<>\s]+)>$/.exec(from);
   const sender = named ? named[2]! : from;
-  if (!/^re_[A-Za-z0-9_]{10,200}$/.test(apiKey) || !ADDRESS.test(sender) || (replyTo !== "" && !ADDRESS.test(replyTo))) return null;
-  return { apiKey, from, replyTo: replyTo === "" ? null : replyTo };
+  const issues: string[] = [];
+  if (apiKey === "") issues.push("RESEND_API_KEY is missing");
+  else if (!/^re_[A-Za-z0-9_-]{10,200}$/.test(apiKey)) issues.push("RESEND_API_KEY must be the key Resend shows, starting with re_ (no spaces)");
+  if (from === "") issues.push("RIO_EMAIL_FROM is missing");
+  else if (!ADDRESS.test(sender)) issues.push("RIO_EMAIL_FROM must be an address, or a name followed by a space and the address in < >");
+  if (replyTo !== "" && !ADDRESS.test(replyTo)) issues.push("RIO_EMAIL_REPLY_TO must be a plain e-mail address");
+  return { resend: issues.length === 0 ? { apiKey, from, replyTo: replyTo === "" ? null : replyTo } : null, issues };
 }
 
 export function loadConfig(source: Record<string, string | undefined>): Config {
@@ -268,6 +278,10 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
       tokenTtlMs: e.REGISTRATION_TOKEN_DAYS * 86_400_000,
     },
     uploads: { enabled: e.RIO_UPLOADS_ENABLED === "yes", r2: readR2(e) },
-    email: { enabled: e.RIO_EMAIL_ENABLED === "yes", resend: readResend(e) },
+    email: (() => {
+      const enabled = e.RIO_EMAIL_ENABLED === "yes";
+      const { resend, issues } = readResend(e);
+      return { enabled, resend, issues: enabled ? issues : [] };
+    })(),
   };
 }
