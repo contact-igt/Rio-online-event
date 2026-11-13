@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -46,6 +47,21 @@ describe("Assign Judges", () => {
     expect(html).toContain('id="judge-kathai-sollum-kutties"');
     expect(html).toContain('id="judge-kutti-pesalar"');
     expect(html).not.toContain("Old (JDG-ZZ99Z)");
+  });
+
+  it("offers a checkbox per active judge, ticks the judges already on a competition, and names the count on the button", async () => {
+    const { default: Page } = await import("@/app/admin/assign-judges/page");
+    const html = renderToStaticMarkup(await Page());
+    const [story, speaker] = html.split('id="judge-kutti-pesalar"');
+    expect(story.match(/type="checkbox"/g)).toHaveLength(2); // Anu and Ravi; the inactive judge is not offered
+    expect(story.match(/type="checkbox"[^>]*checked=""/g)).toHaveLength(2); // both already judge this competition
+    expect(story).toContain("Assign 2 judges");
+    expect(speaker.match(/type="checkbox"/g)).toHaveLength(2);
+    expect(speaker).not.toMatch(/type="checkbox"[^>]*checked=""/); // nobody on this one yet
+    expect(speaker).not.toContain("Assigned / ஒதுக்கப்பட்டவர்");
+    expect(html).toContain("Unticking does not remove a judge.");
+    expect(html).not.toContain("<select");
+    if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/assign.html`, html);
   });
 
   it("/admin/assign shows the same page", async () => {
