@@ -1,5 +1,6 @@
 import { Bilingual } from "@/components/auth/bilingual";
 import Link from "next/link";
+import { FocusHere } from "@/components/registration/focus-here";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { formatDateBilingual } from "@/lib/registration/date";
 import { reg } from "@/lib/registration/messages";
@@ -21,6 +22,8 @@ export type SubmittedDetails = {
   /** Set only when a confirmation e-mail will really be sent. */
   emailMasked: string | null;
   reference: string | null;
+  /** Bring the panel into view on arrival (right after Submit). */
+  focus?: boolean;
 };
 
 function Row({ icon, label, children }: { icon: IconName; label: { ta: string; en: string }; children: React.ReactNode }) {
@@ -38,15 +41,27 @@ function Row({ icon, label, children }: { icon: IconName; label: { ta: string; e
 export function SubmittedPanel(d: SubmittedDetails) {
   const date = formatDateBilingual(d.submittedAt);
   return (
-    <section aria-labelledby="submitted-title" className="card p-5 sm:p-8">
+    <section aria-labelledby="submitted-title" className="card scroll-mt-4 p-5 sm:p-8">
+      {d.focus && <FocusHere id="submitted-title" />}
       <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
         <span aria-hidden="true" className="grid size-16 shrink-0 place-items-center rounded-full bg-[#dff5e8] text-rio-ok">
           <Icon name="check" className="h-9 w-9" />
         </span>
-        <h2 id="submitted-title" className="text-[clamp(1.5rem,4vw,2.25rem)] font-extrabold">
-          {reg.submit.doneTitle.ta} <span lang="en" className="block text-rio-rose">{reg.submit.doneTitle.en}</span>
+        <h2 id="submitted-title" tabIndex={-1} className="scroll-mt-4 text-[clamp(1.5rem,4vw,2.25rem)] font-extrabold outline-none">
+          {reg.submit.registered.ta} <span lang="en" className="block text-rio-rose">{reg.submit.registered.en}</span>
         </h2>
       </div>
+      {d.reference && (
+        <p className="mt-5 rounded-2xl border-2 border-dashed border-rio-navy/20 bg-rio-mist px-4 py-3 text-center">
+          <span className="block text-sm text-rio-slate">
+            {reg.submit.reference.ta} / <span lang="en">{reg.submit.reference.en}</span>
+          </span>
+          <span className="block font-mono text-[clamp(1.75rem,6vw,2.25rem)] font-bold tracking-wider text-rio-navy">{d.reference}</span>
+          <span className="block text-sm font-semibold text-rio-navy">
+            <Bilingual m={reg.submit.keepReference} />
+          </span>
+        </p>
+      )}
       <p className="mt-4">
         <Bilingual m={reg.submit.thanks} />
       </p>
@@ -82,11 +97,6 @@ export function SubmittedPanel(d: SubmittedDetails) {
           <Row icon="video" label={reg.submit.video}>
             {reg.submit.videoDone.ta} <span lang="en" className="font-medium text-rio-slate">/ {reg.submit.videoDone.en}</span>
           </Row>
-          {d.reference && (
-            <Row icon="list" label={reg.submit.reference}>
-              <span className="font-mono">{d.reference}</span>
-            </Row>
-          )}
           {date && (
             <Row icon="calendar" label={reg.submit.submittedOn}>
               {date}

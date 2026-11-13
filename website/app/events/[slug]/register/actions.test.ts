@@ -59,13 +59,13 @@ describe("M6A public registration action", () => {
 
   it("creates a draft with backend consent, optional email, and typed answers", async () => {
     const result = await run(() => actions.saveDraft(undefined, form()));
-    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1#next-steps"); // lands on the video step
+    expect(result.state).toEqual({ saved: true }); // no reload: the one-page form goes on to the video and the submission
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
       eventSlug: "kutti-pesalar", childName: "Asha Kumar", childAge: 9, guardianName: "Meena Kumar", guardianMobile: "+919876543210", guardianEmail: "parent@example.com",
       guardianConsent: { accepted: true, version: "v0-provisional" },
       mediaConsent: { granted: true, version: "v-media" }, answers: { school: "அரசு பள்ளி" },
     }));
-    expect(h.cookie.set).toHaveBeenCalledWith("rio_recovery_notice", expect.stringMatching(/^[A-Z0-9-]+$/), expect.objectContaining({ httpOnly: true }));
+    expect(h.cookie.set).not.toHaveBeenCalled(); // no recovery code: one sitting (owner, 2026-11-12)
   });
 
   it("sends every rendered question, so an unticked checkbox group clears the saved answer", async () => {
@@ -151,7 +151,7 @@ describe("M6A public registration action", () => {
   it("updates only through the recovery cookie session and backend CSRF token", async () => {
     h.current = { view: { status: "draft", event: { slug: "kutti-pesalar" }, questionSet: { questions: [{ key: "school", type: "short_text", required: true }] } }, csrfToken: "csrf-from-current" };
     const result = await run(() => actions.saveDraft(undefined, form({ draftId: "current" })));
-    expect(result.redirect).toBe("/events/kutti-pesalar/register?saved=1#next-steps"); // lands on the video step
+    expect(result.state).toEqual({ saved: true });
     expect(h.update).toHaveBeenCalledWith(expect.objectContaining({ childName: "Asha Kumar" }), "csrf-from-current");
   });
 

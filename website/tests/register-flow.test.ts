@@ -3,15 +3,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The one-sitting registration page (owner, 2026-11-12): the form before saving; after saving a short summary with "Edit details" and the
-// video step straight after it; the form again only on request; after submitting the summary only. The form and the next-steps panel are
-// stand-ins here (they have their own tests); this checks what is shown, and in which order.
+// The registration page, one page and one button (owner, 2026-11-13): the form with the video and the consent box until the entry is
+// submitted (a draft left unfinished opens the same form, filled in), then the summary only. The form is a stand-in here (it has its own
+// tests); this checks what is shown and what the form is told about the video.
 
 const question = (key: string, type: string, promptEn: string, options: { code: string; ta: string; en: string }[] | null = null) => ({
   key, type, position: 1, promptTa: `${promptEn} (த)`, promptEn, helpTa: null, helpEn: null, required: true, options, maxLength: null, minNumber: null, maxNumber: null,
 });
 const questions = [question("school", "short_text", "School Name"), question("pin", "number", "Postal PIN Code"), question("note", "instruction", "Read this")];
-const h = vi.hoisted(() => ({ view: null as unknown, status: "draft", video: false }));
+const h = vi.hoisted(() => ({ view: null as unknown, status: "draft", video: false, uploads: true }));
 const view = () => ({
   reference: "RIOFLOW001", status: h.status, editable: h.status === "draft",
   event: { slug: "kutti-pesalar", nameTa: "குட்டிப் பேச்சாளர்", nameEn: "Little Speaker", minAge: 8, maxAge: 12 },
@@ -29,85 +29,75 @@ vi.mock("next/link", async () => {
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("notFound"); }, useRouter: () => ({ refresh: () => undefined }) }));
 vi.mock("@/components/registration/registration-form", async () => {
   const { createElement: el } = await import("react");
-  return { RegistrationForm: () => el("div", { "data-testid": "form" }, "FORM") };
-});
-vi.mock("@/components/registration/next-steps", async () => {
-  const { createElement: el } = await import("react");
-  return { NextSteps: ({ submit }: { submit?: unknown }) => el("section", { id: "next-steps" }, "NEXT-STEPS", submit as never) };
-});
-vi.mock("@/components/registration/submit-entry", async () => {
-  const { createElement: el } = await import("react");
-  return { SubmitEntry: () => el("div", null, "SUBMIT-BUTTON") };
+  return {
+    RegistrationForm: ({ finish, draft }: { finish?: unknown; draft?: { childName: string } | null }) =>
+      el("div", { "data-testid": "form" }, `FORM finish=${JSON.stringify(finish)} draft=${draft?.childName ?? "none"}`),
+  };
 });
 vi.mock("@/lib/registration/express", () => ({
   publicEvents: async () => [{ slug: "kutti-pesalar", nameTa: "குட்டிப் பேச்சாளர்", nameEn: "Little Speaker", minAge: 8, maxAge: 12, questionSet: { version: 1, questions } }],
-  publicSettings: async () => ({ registrationOpen: true, opensAt: null, closesAt: null, guardianConsentVersion: "v0-provisional", mediaConsentVersion: null, videoUploads: true, serverTime: "" }),
+  publicSettings: async () => ({ registrationOpen: true, opensAt: null, closesAt: null, guardianConsentVersion: "v0-provisional", mediaConsentVersion: null, videoUploads: h.uploads, serverTime: "" }),
   currentRegistration: async () => (h.view ? { view: h.view, csrfToken: "t" } : null),
 }));
 
-const render = async (query: Record<string, string> = {}) => {
+const render = async () => {
   const { default: Page } = await import("@/app/events/[slug]/register/page");
-  return renderToStaticMarkup(createElement("div", null, await Page({ params: Promise.resolve({ slug: "kutti-pesalar" }), searchParams: Promise.resolve(query) })));
+  return renderToStaticMarkup(createElement("div", null, await Page({ params: Promise.resolve({ slug: "kutti-pesalar" }) })));
 };
 
 beforeEach(() => {
   h.status = "draft";
   h.video = false;
   h.view = null;
+  h.uploads = true;
 });
 
-describe("registration page, one sitting", () => {
-  it("before saving: only the form", async () => {
+describe("registration page, one page and one button", () => {
+  it("a new entry: the form, with the video step inside it and uploads open", async () => {
     const html = await render();
-    expect(html).toContain("FORM");
-    expect(html).not.toContain("NEXT-STEPS");
+    expect(html).toContain('FORM finish={&quot;hasVideo&quot;:false,&quot;uploadsOpen&quot;:true} draft=none');
     expect(html).not.toContain("Your details");
+    expect(html).not.toContain("Entry submitted");
   });
 
-  it("after saving: a short summary with Edit details, then the video step right after it, and no form", async () => {
+  it("an unfinished draft opens the same form, filled in, not a summary with separate steps", async () => {
     h.view = view();
-    const html = await render({ saved: "1" });
-    expect(html).not.toContain("FORM");
-    expect(html).toContain("Details saved. Now upload the video.");
-    const summary = html.indexOf("Your details");
-    const next = html.indexOf("NEXT-STEPS");
-    expect(summary).toBeGreaterThan(-1);
-    expect(next).toBeGreaterThan(summary); // the video step follows the summary directly
-    expect(html).toContain("Asha, 9");
-    expect(html).toContain("Sunshine School");
-    expect(html).toContain("600001");
-    expect(html).not.toContain("Read this"); // an instruction is not an answer
-    expect(html).toContain('href="/events/kutti-pesalar/register?edit=1#details"');
-    if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/register-saved.html`, html);
-  });
-
-  it("Edit details brings the form back (with a way out), the summary steps aside, and the video step stays below", async () => {
-    h.view = view();
-    const html = await render({ edit: "1" });
-    expect(html).toContain("FORM");
+    const html = await render();
+    expect(html).toContain("draft=Asha");
+    expect(html).toContain("&quot;hasVideo&quot;:false");
     expect(html).not.toContain("Your details");
-    expect(html).toContain("Back without changes");
-    expect(html.indexOf("FORM")).toBeLessThan(html.indexOf("NEXT-STEPS"));
+    if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/register-draft.html`, html);
   });
 
-  it("with the video uploaded: saving again just says saved, and Submit is offered", async () => {
+  it("a draft whose video is already uploaded tells the form, so Submit does not ask for it again", async () => {
     h.video = true;
     h.view = view();
-    const html = await render({ saved: "1" });
-    expect(html).toContain("Details saved.");
-    expect(html).not.toContain("Now upload the video");
-    expect(html).toContain("SUBMIT-BUTTON");
+    const html = await render();
+    expect(html).toContain("&quot;hasVideo&quot;:true");
   });
 
-  it("after submitting: the summary only, read only, and no form even if asked", async () => {
+  it("tells the form when uploads are switched off", async () => {
+    h.uploads = false;
+    const html = await render();
+    expect(html).toContain("&quot;uploadsOpen&quot;:false");
+  });
+
+  it("after submitting: the summary only, read only, and no form", async () => {
     h.status = "finalized";
     h.video = true;
     h.view = view();
-    const html = await render({ edit: "1" });
+    const html = await render();
     expect(html).not.toContain("FORM");
     expect(html).toContain("Your details");
+    expect(html).toContain("Asha, 9");
+    expect(html).toContain("Sunshine School");
+    expect(html).not.toContain("Read this"); // an instruction is not an answer
     expect(html).not.toContain("?edit=1");
-    expect(html).toContain("Details cannot be changed after the entry is submitted.");
-    expect(html).toContain("Entry submitted");
+    expect(html).toContain("You are registered successfully!"); // the success page
+    expect(html).toContain("RIOFLOW001"); // the reference, shown large
+    expect(html).toContain("Please keep this reference number.");
+    expect(html).not.toMatch(/email will be sent/i); // no e-mail is promised: none is sent yet
+    expect(html.indexOf("You are registered successfully!")).toBeLessThan(html.indexOf("Your details"));
+    if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/register-done.html`, html);
   });
 });
