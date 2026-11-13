@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AssignJudgeForm } from "@/components/admin/assign-judge-form";
 import { Icon } from "@/components/ui/icon";
-import { loadCompetitions, loadJudgesList } from "@/lib/admin/api";
+import { loadCompetitions, loadJudgesList, loadRanking, loadScoringOverview } from "@/lib/admin/api";
 import { requireStaff } from "@/lib/staff/auth";
 
 export const metadata: Metadata = { title: "Assign Judges · Admin", robots: { index: false } };
@@ -9,7 +9,15 @@ export const dynamic = "force-dynamic";
 
 export default async function AssignJudgesPage() {
   await requireStaff("admin");
-  const [competitions, judges] = await Promise.all([loadCompetitions(), loadJudgesList()]);
+  const [competitions, judges, overview] = await Promise.all([loadCompetitions(), loadJudgesList(), loadScoringOverview()]);
+  // A competition can have any number of judges: each Assign adds one judge to every submitted entry. Show who is already on each one, so a
+  // second or third judge is plainly possible (the page used to show only the form, which read as "one judge per competition").
+  const rankings = competitions.ok ? await Promise.all(competitions.data.map((c) => loadRanking(c.slug))) : [];
+  const progress = (slug: string) => (overview.ok ? overview.data.competitions.find((c) => c.slug === slug) : undefined);
+  const judgesOn = (i: number) => {
+    const r = rankings[i];
+    return r?.ok ? [...new Map(r.data.entries.flatMap((e) => e.judges).map((j) => [j.judgeCode, `${j.judgeName} (${j.judgeCode})`])).values()] : [];
+  };
   const activeJudges = judges.ok ? judges.data.filter((judge) => judge.active).map((judge) => ({ id: String(judge.id), name: `${judge.name} (${judge.judgeCode})` })) : [];
 
   return (
@@ -22,7 +30,7 @@ export default async function AssignJudgesPage() {
         <span lang="ta" className="block">நடுவர் ஒதுக்கீடு</span>
         <span lang="en" className="mt-0.5 block text-base font-medium leading-snug text-rio-slate sm:text-lg">Assign Judges</span>
       </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-rio-slate">Choose an active judge for each competition. Assignments apply only to submitted entries and are safe to repeat.</p>
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-rio-slate">Choose an active judge for each competition. Assignments apply only to submitted entries and are safe to repeat. To give a competition two or three judges, assign each judge in turn: every judge scores every entry, and the ranking uses their average.</p>
 
       {!competitions.ok && <p role="alert" className="card mt-6 p-4 font-semibold text-rio-error">Competition data is unavailable. No judge assignment was changed.</p>}
 
@@ -60,12 +68,26 @@ export default async function AssignJudgesPage() {
                 <p className="mt-4 rounded-xl bg-rio-mist px-4 py-3 text-sm leading-snug text-rio-slate">No active judges exist yet. Add judges before assigning them to a competition.</p>
               ) : (
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  {competitions.data.map((competition) => (
-                    <article key={competition.slug} className="rounded-2xl border border-rio-navy/10 bg-white p-4 shadow-sm">
-                      <h3 className="font-display text-xl font-bold leading-snug text-rio-navy">{competition.nameTa}<span lang="en" className="mt-0.5 block text-sm font-semibold text-rio-slate">{competition.nameEn}</span></h3>
-                      <div className="mt-4"><AssignJudgeForm slug={competition.slug} judges={activeJudges} /></div>
-                    </article>
-                  ))}
+                  {competitions.data.map((competition, i) => {
+                    const p = progress(competition.slug);
+                    const on = judgesOn(i);
+                    return (
+                      <article key={competition.slug} className="rounded-2xl border border-rio-navy/10 bg-white p-4 shadow-sm">
+                        <h3 className="font-display text-xl font-bold leading-snug text-rio-navy">{competition.nameTa}<span lang="en" className="mt-0.5 block text-sm font-semibold text-rio-slate">{competition.nameEn}</span></h3>
+                        {p && (
+                          <p className="mt-2 text-sm font-semibold text-rio-navy">
+                            {p.submitted} submitted · {p.notAssigned} without a judge
+                            <span lang="ta" className="block font-medium text-rio-slate">{p.submitted} சமர்ப்பிப்புகள் · {p.notAssigned} நடுவர் இல்லாதவை</span>
+                          </p>
+                        )}
+                        <div className="mt-2 rounded-xl bg-rio-mist px-3 py-2 text-sm text-rio-navy">
+                          <span className="font-semibold">Judges on this competition / இந்தப் போட்டியின் நடுவர்கள்:</span>{" "}
+                          {on.length > 0 ? on.join(", ") : <span className="text-rio-slate">none yet / இன்னும் இல்லை</span>}
+                        </div>
+                        <div className="mt-4"><AssignJudgeForm slug={competition.slug} judges={activeJudges} /></div>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </div>

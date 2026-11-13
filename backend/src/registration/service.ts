@@ -8,7 +8,7 @@ import { DatabaseError } from "../db/errors.ts";
 import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
 import { checkAnswer, missingRequired, type AnswerValue, type Option, type Question, type QuestionType } from "./answers.ts";
-import { canonicalCode, newEntryReference, newRecoveryCode } from "./codes.ts";
+import { canonicalCode, ENTRY_PREFIX, newRecoveryCode, nextEntryReference } from "./codes.ts";
 import { isApprovedGuardianConsentVersion } from "./consent.ts";
 import { nameKey } from "./normalize.ts";
 import { ValidationFailed, type CreateInput, type PatchInput } from "./schemas.ts";
@@ -311,7 +311,11 @@ export async function createRegistration(deps: RegistrationDeps, input: CreateIn
     const made = await db.transaction(async (tx) => {
       let reference = "";
       for (let attempt = 0; ; attempt++) {
-        reference = newEntryReference();
+        // Running numbers: read the existing RIO numbers in this transaction and take the next one. Two parents saving at the same moment may
+        // pick the same number; the unique key refuses the second, which then tries the number after it (the skip also covers a database whose
+        // snapshot does not see the other insert).
+        const taken = (await tx.query<{ entry_code: string }>("SELECT entry_code FROM submissions WHERE entry_code LIKE ?", [`${ENTRY_PREFIX}%`])).rows.map((r) => r.entry_code);
+        reference = nextEntryReference(taken, attempt);
         try {
           await tx.query(
             `INSERT INTO submissions (entry_code, event_id, question_set_id, child_name, child_name_norm, child_age, guardian_name, guardian_mobile, guardian_email,
@@ -326,7 +330,7 @@ export async function createRegistration(deps: RegistrationDeps, input: CreateIn
           );
           break;
         } catch (error) {
-          if (attempt < 4 && error instanceof DatabaseError && error.constraint === "unique") continue; // the reference was taken: draw another
+          if (attempt < 9 && error instanceof DatabaseError && error.constraint === "unique") continue; // the number was just taken: try the next
           throw error;
         }
       }

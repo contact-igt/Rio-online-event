@@ -5,14 +5,29 @@ import { createHmac, randomInt } from "node:crypto";
 //   recovery code   24 characters from Crockford's base32 (no I, L, O or U), 120 bits, shown to the parent in six groups of four. It is the
 //                   ONLY way back into a draft: the same value rides in an HttpOnly cookie on the device that registered, and can be typed on
 //                   another device. Only its SHA-256 is stored. A person's name or mobile number never opens anything.
-//   entry reference 10 characters of the same alphabet: the anonymous label that judges and administrators see instead of a child's name.
-//                   It identifies, it does not authenticate.
+//   entry reference a readable running number, RIO0001, RIO0002, ... (owner, 2026-11-13: "registration 1, registration 2"): the label that
+//                   judges and administrators see instead of a child's name. It identifies, it does not authenticate (an entry opens only with the
+//                   registration cookie). Entries made before this kept their random 10-character references; those use the alphabet below,
+//                   which has no letter O, so they can never look like "RIO" followed by digits.
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const random = (length: number): string => Array.from({ length }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
 
 export const newRecoveryCode = (): string => random(24);
-export const newEntryReference = (): string => random(10);
+
+export const ENTRY_PREFIX = "RIO";
+const RUNNING = /^RIO(\d{4,})$/u;
+
+/** The next running reference after the given existing ones: the highest RIO number plus one (plus `skip`, for a retry after a clash), at
+ *  least four digits. Codes that are not RIO-and-digits (the older random ones, or anything else) are ignored. */
+export function nextEntryReference(existing: readonly string[], skip = 0): string {
+  let max = 0;
+  for (const code of existing) {
+    const m = RUNNING.exec(code);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${ENTRY_PREFIX}${String(max + 1 + skip).padStart(4, "0")}`;
+}
 
 /** 4-4-4-4-4-4 for reading and typing. */
 export const showRecoveryCode = (code: string): string => code.match(/.{4}/gu)!.join("-");
