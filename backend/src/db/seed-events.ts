@@ -2,7 +2,7 @@ import { writeAudit } from "../auth/audit.ts";
 import type { DatabaseAdapter, Queryable } from "./adapter.ts";
 import { COMPETITIONS, type Competition } from "./seed/competitions.ts";
 
-// Puts the six competitions into the `events` table of a LOCAL development database. Rules:
+// Puts the four active competitions into the `events` table of a LOCAL development database. Rules:
 //   * idempotent: a competition that is already there with the same slug, names and ages is left alone;
 //   * never overwrites: if a slug exists with different names or ages, NOTHING is written and the differences are reported (an organizer may have
 //     changed it on purpose, or the data may be wrong; a person decides, not this script);
@@ -13,7 +13,7 @@ export type SeedPlan = {
   toCreate: Competition[];
   unchanged: string[];
   conflicts: { slug: string; fields: string[] }[];
-  /** Competitions in the table that are not among the six (added by an organizer): reported, never touched. */
+  /** Competitions in the table that are not among the four active entries (added by an organizer): reported, never touched. */
   others: string[];
 };
 

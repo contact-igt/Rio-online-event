@@ -17,12 +17,16 @@ import {
 } from "./judges.ts";
 import { deleteRegistrationByAdmin, mintAdminPlaybackUrl, purgeRegistrationByAdmin, deletedListQuery, editBody, listDeletedRegistrations, listQuery, listRegistrations, loadRegistration, restoreRegistrationByAdmin, updateRegistrationByAdmin } from "./registrations.ts";
 import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } from "./settings.ts";
+import { loadRanking, scoringOverview } from "./scoring.ts";
+import { approveBody, approveWinner, loadWinners, removeWinner, winnersOverview } from "./winners.ts";
 
 // Mounted under /api/v1/admin. Administrators only: requireStaff checks the origin, the session, the role (read from the database) and, for every
 // request that changes something, the CSRF token. A judge and an anonymous caller get the same refusals as on every staff route.
 //   GET /dashboard, GET and PATCH /settings                                         (M5A)
 //   GET /registrations (filters: competition, status, page), GET /registrations/:entryCode   (read only; opening one is audited)
-//   GET /competitions, GET and POST /competitions/:slug/question-sets               (M5B)
+//   GET /competitions, GET /scoring, GET /results, GET /competitions/:slug/ranking,
+//   GET|POST /competitions/:slug/winners, DELETE /competitions/:slug/winners/:place (M7)
+//   GET and POST /competitions/:slug/question-sets                                  (M5B)
 //   GET and DELETE ../question-sets/:setId, GET ../:setId/preview, POST ../:setId/publish, POST ../:setId/publish-all (same questions to every competition)
 //   POST ../:setId/questions, PATCH and DELETE ../:setId/questions/:questionId, PUT ../:setId/order
 
@@ -121,6 +125,16 @@ export function adminRouter(deps: AuthDeps, video: VideoStore | null = null): Ro
   const slug = (req: { params: Record<string, unknown> }) => slugOf(req.params.slug);
   const setId = (req: { params: Record<string, unknown> }) => idOf(req.params.setId);
   router.get("/competitions", ...admin, guarded(async (_req, res) => void res.json({ competitions: await listCompetitions(deps.db) })));
+  router.get("/scoring", ...admin, guarded(async (_req, res) => void res.json(await scoringOverview(deps.db))));
+  router.get("/results", ...admin, guarded(async (_req, res) => void res.json(await winnersOverview(deps.db, now()))));
+  router.get("/competitions/:slug/ranking", ...admin, guarded(async (req, res) => void res.json(await loadRanking(deps.db, slugOf(req.params.slug)))));
+  router.get("/competitions/:slug/winners", ...admin, guarded(async (req, res) => void res.json(await loadWinners(deps.db, now(), slugOf(req.params.slug)))));
+  router.post("/competitions/:slug/winners", ...admin, guarded(async (req, res) => {
+    res.status(201).json(await approveWinner(deps.db, now(), actor(res), slugOf(req.params.slug), parse(approveBody, req.body ?? {})));
+  }));
+  router.delete("/competitions/:slug/winners/:place", ...admin, guarded(async (req, res) => {
+    res.json(await removeWinner(deps.db, now(), actor(res), slugOf(req.params.slug), idOf(req.params.place)));
+  }));
   router.get(sets, ...admin, guarded(async (req, res) => void res.json(await listSets(deps.db, slug(req)))));
   router.post(sets, ...admin, guarded(async (req, res) => {
     const body = parse(createSetBody, req.body ?? {});

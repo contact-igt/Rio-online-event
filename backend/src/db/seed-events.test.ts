@@ -60,11 +60,11 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     expect(await count("audit_log")).toBe(0);
   });
 
-  it("creates the six competitions exactly, in poster order, active, with one audit row", async () => {
+  it("creates the four competitions exactly, in poster order, active, with one audit row", async () => {
     await fresh();
     const now = new Date();
     const result = await applySeed(db, now);
-    expect(result.created).toHaveLength(6);
+    expect(result.created).toHaveLength(4);
     const rows = (await q<{ slug: string; name_ta: string; name_en: string; min_age: number; max_age: number; display_order: number; active: number }>("SELECT slug, name_ta, name_en, min_age, max_age, display_order, active FROM events ORDER BY display_order")).rows;
     expect(rows.map((r) => ({ number: Number(r.display_order), slug: r.slug, nameTa: r.name_ta, nameEn: r.name_en, minAge: Number(r.min_age), maxAge: Number(r.max_age) }))).toEqual(COMPETITIONS);
     expect(rows.every((r) => Number(r.active) === 1)).toBe(true);
@@ -72,7 +72,7 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actor_type: "system", action: "events.seeded" });
     const details = audit[0]!.details;
-    expect(typeof details === "string" ? JSON.parse(details) : details).toMatchObject({ created: 6, already_present: 0 });
+    expect(typeof details === "string" ? JSON.parse(details) : details).toMatchObject({ created: 4, already_present: 0 });
   });
 
   it("writes nothing but events and one audit row: no questions, no question sets, no settings change, no entries", async () => {
@@ -90,7 +90,7 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     await applySeed(db, new Date());
     const again = await applySeed(db, new Date());
     expect(again).toMatchObject({ created: [], unchanged: COMPETITIONS.map((c) => c.slug) });
-    expect(await count("events")).toBe(6);
+    expect(await count("events")).toBe(4);
     expect(await count("audit_log")).toBe(1);
   });
 
@@ -100,7 +100,7 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     await q("INSERT INTO events (slug, name_ta, name_en, min_age, max_age, display_order, active) VALUES (?, ?, ?, ?, ?, 99, 0)", [first.slug, first.nameTa, first.nameEn, first.minAge, first.maxAge]);
     const result = await applySeed(db, new Date());
     expect(result.created).toEqual(COMPETITIONS.slice(1).map((c) => c.slug));
-    expect(await count("events")).toBe(6);
+    expect(await count("events")).toBe(4);
     const kept = (await q<{ display_order: number; active: number }>("SELECT display_order, active FROM events WHERE slug = ?", [first.slug])).rows[0]!;
     expect([Number(kept.display_order), Number(kept.active)]).toEqual([99, 0]); // an organizer's order and switch are not overwritten
   });
@@ -110,7 +110,7 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
     await q("INSERT INTO events (slug, name_ta, name_en, min_age, max_age) VALUES ('organizer-special', 'சிறப்பு', 'Special', 4, 9)");
     const result = await applySeed(db, new Date());
     expect(result.others).toEqual(["organizer-special"]);
-    expect(await count("events")).toBe(7);
+    expect(await count("events")).toBe(5);
     expect((await q<{ name_en: string }>("SELECT name_en FROM events WHERE slug = 'organizer-special'")).rows[0]!.name_en).toBe("Special");
   });
 
@@ -121,13 +121,13 @@ describe.each(dialects)("%s competition seed", (dialect: Dialect) => {
   ])("stops without writing anything when an existing competition has %s that differs", async (_label, change, fields) => {
     await fresh();
     await applySeed(db, new Date());
-    await q("DELETE FROM events WHERE slug = 'tamilil-sollu'"); // a missing competition that would otherwise be created
+    await q("DELETE FROM events WHERE slug = 'thirukkural-thiramai'"); // a missing active competition that would otherwise be created
     await q(change);
     const before = await count("audit_log");
     const error = await applySeed(db, new Date()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SeedConflict);
     expect((error as SeedConflict).conflicts).toEqual([{ slug: "kutti-pesalar", fields }]);
-    expect(await count("events")).toBe(5); // the missing one was NOT created: all or nothing
+    expect(await count("events")).toBe(3); // the missing one was NOT created: all or nothing
     expect(await count("audit_log")).toBe(before);
   });
 
@@ -169,31 +169,31 @@ describe("the seed command (a real child process, SQLite file)", () => {
     expect(existsSync(path) && (() => { try { return events(); } catch { return 0; } })() > 0).toBe(false);
   });
 
-  it("--dry-run shows the plan and writes nothing; the real run creates six; the next run does nothing", () => {
+  it("--dry-run shows the plan and writes nothing; the real run creates four; the next run does nothing", () => {
     expect(cli("cli.ts", "migrate").code).toBe(0);
     const dry = cli("seed-events-cli.ts", "--dry-run");
     expect(dry.code).toBe(0);
-    expect(dry.out).toContain("to create: 6");
+    expect(dry.out).toContain("to create: 4");
     expect(dry.out).toContain("dry run: nothing was written.");
     expect(events()).toBe(0);
     const real = cli("seed-events-cli.ts");
     expect(real.code).toBe(0);
-    expect(real.out).toContain("Created 6 competition(s).");
-    expect(events()).toBe(6);
+    expect(real.out).toContain("Created 4 competition(s).");
+    expect(events()).toBe(4);
     const again = cli("seed-events-cli.ts");
-    expect(again.out).toContain("Nothing to do: all six competitions are already present.");
-    expect(events()).toBe(6);
+    expect(again.out).toContain("Nothing to do: all four competitions are already present.");
+    expect(events()).toBe(4);
   });
 
   it("stops on a conflict and says which field, without writing", () => {
     const d = new DatabaseSync(path);
-    d.exec("UPDATE events SET min_age = 4 WHERE slug = 'malalai-mozhi'; DELETE FROM events WHERE slug = 'tamilil-sollu'");
+    d.exec("UPDATE events SET min_age = 4 WHERE slug = 'malalai-mozhi'; DELETE FROM events WHERE slug = 'kutti-pesalar'");
     d.close();
     const r = cli("seed-events-cli.ts");
     expect(r.code).toBe(1);
     expect(r.out).toContain("CONFLICT malalai-mozhi: min_age differ");
     expect(r.out).toContain("Stopped: nothing was written.");
-    expect(events()).toBe(5);
+    expect(events()).toBe(3);
   });
 
   it("refuses to run in production and never opens the database", () => {

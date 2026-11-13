@@ -1,4 +1,4 @@
-// The six competitions, copied from website/lib/events.ts (the single source of truth for the public site). Only what the `events` table can
+// The four active competitions, copied from website/lib/events.ts (the single source of truth for the public site). Only what the `events` table can
 // hold is here: slug, Tamil and English name, age range, and the order the poster prints them. The task sentences have no column yet, and no dates,
 // questions or consent text are seeded. A test (seed-events.test.ts) reads website/lib/events.ts and fails if this list ever drifts from it.
 //
