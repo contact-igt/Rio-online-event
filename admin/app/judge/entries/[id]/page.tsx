@@ -70,7 +70,7 @@ export default async function JudgeEntryPage({ params }: { params: Promise<{ id:
         </span>
       </div>
 
-      {/* Video and details on the left, the scoring card on the right; on a phone they stack as video, score, details. */}
+      {/* Video on the left and the scoring card on the right; on a phone they stack. The API deliberately withholds entry answers. */}
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
         <div className="card min-w-0 p-4 sm:p-5 lg:col-start-1">
           <h2 className="mb-3 text-lg font-semibold leading-snug text-rio-navy">
@@ -90,26 +90,6 @@ export default async function JudgeEntryPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {entry.answers.length > 0 && (
-          <div className="card min-w-0 p-4 sm:p-5 lg:col-start-1">
-            <h2 className="text-lg font-semibold leading-snug text-rio-navy">
-              <span lang="ta" className="block">{M.entryDetails.ta}</span>
-              <span lang="en" className="block text-sm font-medium text-rio-slate">{M.entryDetails.en}</span>
-            </h2>
-            <dl className="mt-2 divide-y divide-rio-navy/10">
-              {entry.answers.map((a) => (
-                <div key={a.key} className="py-2.5 sm:grid sm:grid-cols-3 sm:gap-4">
-                  <dt className="text-sm font-semibold text-rio-navy">
-                    {a.promptEn} <span lang="ta" className="block text-xs font-normal text-rio-slate">{a.promptTa}</span>
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-rio-ink [overflow-wrap:anywhere] sm:col-span-2 sm:mt-0">
-                    {Array.isArray(a.value) ? a.value.join(", ") : String(a.value ?? "—")}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        )}
       </div>
     </section>
   );

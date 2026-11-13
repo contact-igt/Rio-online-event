@@ -27,6 +27,7 @@ import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } fro
 //   POST ../:setId/questions, PATCH and DELETE ../:setId/questions/:questionId, PUT ../:setId/order
 
 const notFound = () => new AppError(404, "not_found", "Not found.");
+const assignBody = z.strictObject({ judgeId: z.number().int().positive() });
 const slugOf = (value: unknown): string => {
   if (typeof value !== "string" || value.length > 60 || !/^[a-z0-9]+(-[a-z0-9]+)*$/u.test(value)) throw notFound();
   return value;

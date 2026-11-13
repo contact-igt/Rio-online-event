@@ -13,9 +13,11 @@ export async function assignJudge(input: { slug: string; judgeId: string }): Pro
   if (reply.status === 200 && reply.body?.ok) {
     return { ok: true, added: reply.body.added };
   }
-  if (reply.status === 404) {
-    return { ok: false, code: "judgeNotFound" };
-  }
+  // 404: the judge is not an active judge, or the competition is unknown. 409: the database refused (an inactive judge).
+  if (reply.status === 404 || reply.status === 409) return { ok: false, code: "judgeNotFound" };
+  if (reply.status === 400) return { ok: false, code: "invalid" };
+  if (reply.status === 401 || reply.status === 403) return { ok: false, code: "notAllowed" };
+  if (reply.status === 429) return { ok: false, code: "tooMany" };
   return { ok: false, code: "unavailable" };
 }
 

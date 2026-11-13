@@ -271,9 +271,12 @@ export function RegistrationForm({ event, questions = [], consent, draft, action
                           id={input}
                           name={input}
                           type="number"
+                          inputMode="numeric"
                           defaultValue={typeof value === "number" ? value : ""}
                           min={q.minNumber ?? undefined}
                           max={q.maxNumber ?? undefined}
+                          // Whole-number bounds (a PIN code: 100000 to 999999) ask for a whole number: the phone shows the number pad and no decimals.
+                          step={q.minNumber !== null && q.maxNumber !== null && Number.isInteger(q.minNumber) && Number.isInteger(q.maxNumber) ? 1 : "any"}
                           className={inputBase}
                         />
                       )}

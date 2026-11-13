@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bilingual } from "@/components/auth/bilingual";
+import { DetailsSummary } from "@/components/registration/details-summary";
 import { NextSteps, type UploadStep } from "@/components/registration/next-steps";
 import { RegistrationForm } from "@/components/registration/registration-form";
 import { SubmitEntry } from "@/components/registration/submit-entry";
 import { Icon, eventIcon } from "@/components/ui/icon";
+import { registerPath } from "@/lib/auth/paths";
 import { getEvent, rules } from "@/lib/events";
 import { consentActivationState, getConsentCopy } from "@/lib/registration/consent";
 import { currentRegistration, publicEvents, publicSettings, type PublicEvent } from "@/lib/registration/express";
@@ -38,8 +40,9 @@ function eventFor(slug: string, remote: PublicEvent) {
   return { ...local, nameTa: remote.nameTa, nameEn: remote.nameEn, minAge: remote.minAge, maxAge: remote.maxAge };
 }
 
-export default async function RegisterPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function RegisterPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ edit?: string; saved?: string }> }) {
   const { slug } = await params;
+  const query = (await searchParams) ?? {};
   const local = getEvent(slug);
   if (!local) notFound();
 
@@ -58,6 +61,10 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
     consentActivationState(settings.guardianConsentVersion) === "unavailable";
   const consent = !consentUnavailable && settings?.guardianConsentVersion ? getConsentCopy(settings.guardianConsentVersion) : null;
   const editable = view?.editable === true;
+  // One sitting (owner, 2026-11-12): before saving, the form; after saving, a short summary with "Edit details" and the video step straight
+  // after it; after submitting, the summary only. The form comes back for a saved draft only when the parent asks (?edit=1).
+  const editing = Boolean(view && editable && query.edit === "1");
+  const justSaved = Boolean(view && editable && !editing && query.saved === "1");
   // The upload step: an attached video is always shown (it is final); a draft without one may upload only while the API says uploads are open.
   const upload: UploadStep = view?.video?.uploaded ? { kind: "on", hasVideo: true } : editable && settings?.videoUploads ? { kind: "on", hasVideo: false } : { kind: "off" };
   // The last step of the one sitting: submit, once the video is attached. Finalized and held look the same to the parent.
@@ -93,12 +100,12 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
       <section className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
         {/* Navigation Breadcrumb */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm font-semibold text-rio-navy">
-          <Link href="/" className="inline-flex items-center gap-1.5 underline underline-offset-4 text-rio-slate hover:text-rio-navy">
+          <Link href="/" className="inline-flex min-h-11 items-center gap-1.5 underline underline-offset-4 text-rio-slate hover:text-rio-navy">
             <Icon name="chevron" className="h-3.5 w-3.5 rotate-180" />
             Home
           </Link>
           <span aria-hidden="true" className="text-slate-300">/</span>
-          <Link href="/competitions" className="underline underline-offset-4 text-rio-slate hover:text-rio-navy">
+          <Link href="/competitions" className="inline-flex min-h-11 items-center underline underline-offset-4 text-rio-slate hover:text-rio-navy">
             Competitions
           </Link>
           <span aria-hidden="true" className="text-slate-300">/</span>
@@ -169,8 +176,22 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
           )}
 
           {/* MAIN REGISTRATION FORM (Clean 1-by-1 Stacked Layout) */}
-          {open && consent && questionSet && (!view || editable) && (
-            <div className="mt-6">
+          {justSaved && (
+            <p role="status" className="rounded-2xl border-2 border-rio-ok bg-white p-4 font-semibold text-rio-ok">
+              {(view?.video?.uploaded ? reg.summary.savedAgain : reg.summary.saved).ta}
+              <span lang="en" className="block font-medium">{(view?.video?.uploaded ? reg.summary.savedAgain : reg.summary.saved).en}</span>
+            </p>
+          )}
+
+          {view && !editing && <DetailsSummary view={view} editHref={editable && open && consent ? `${registerPath(event.slug)}?edit=1#details` : null} />}
+
+          {open && consent && questionSet && (!view || editing) && (
+            <div id="details" className="mt-6 scroll-mt-4">
+              {editing && (
+                <Link href={registerPath(event.slug)} className="mb-3 inline-flex min-h-11 items-center font-semibold text-rio-rose underline underline-offset-4">
+                  ← {reg.summary.cancelEdit.ta} / <span lang="en" className="ml-1">{reg.summary.cancelEdit.en}</span>
+                </Link>
+              )}
               <RegistrationForm
                 key={view?.reference ?? "new"}
                 event={{ slug: event.slug, minAge: event.minAge, maxAge: event.maxAge }}
@@ -179,12 +200,6 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
                 draft={draft}
               />
             </div>
-          )}
-
-          {view && !editable && (
-            <p className="rounded-2xl bg-white p-5 font-semibold text-center text-rio-navy shadow-xs border border-slate-200">
-              This entry is submitted and can no longer be edited. / இந்த பதிவு சமர்ப்பிக்கப்பட்டது.
-            </p>
           )}
 
           {view && <NextSteps upload={upload} submit={submit} />}

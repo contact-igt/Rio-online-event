@@ -29,7 +29,7 @@ export function AssignJudgeForm({ slug, judges }: { slug: string; judges: { id: 
     router.refresh();
   }
 
-  if (!judges.length) return <p className="text-rio-slate">No active judges exist yet. Add judges in the database first.</p>;
+  if (!judges.length) return <p className="text-rio-slate">No active judge yet. Add one on the Judges page first.</p>;
   return (
     <form
       onSubmit={(e) => {
@@ -41,16 +41,16 @@ export function AssignJudgeForm({ slug, judges }: { slug: string; judges: { id: 
       <p className="text-rio-slate">
         <Bilingual m={staff.admin.assignHelp} />
       </p>
-      <label htmlFor="judge" className="block font-semibold text-rio-navy">Judge</label>
-      <select id="judge" value={judgeId} onChange={(e) => setJudgeId(e.target.value)} className="field sm:w-80">
+      <label htmlFor={`judge-${slug}`} className="block font-semibold text-rio-navy">Judge <span lang="ta" className="font-medium">/ நடுவர்</span></label>
+      <select id={`judge-${slug}`} value={judgeId} onChange={(e) => setJudgeId(e.target.value)} className="field sm:w-80">
         {judges.map((j) => (
           <option key={j.id} value={j.id}>{j.name}</option>
         ))}
       </select>
-      {state.kind === "failed" && <FieldError id="assign-error" m={state.message} />}
+      {state.kind === "failed" && <FieldError id={`assign-error-${slug}`} m={state.message} />}
       {state.kind === "done" && (
         <p role="status" className="font-semibold text-rio-ok">
-          {state.added} entries added.
+          {state.added === 0 ? "Nothing new: this judge already has every submitted entry. / புதிதாக எதுவும் இல்லை." : `${state.added} entries added. / ${state.added} பதிவுகள் சேர்க்கப்பட்டன.`}
         </p>
       )}
       <button type="submit" disabled={state.kind === "saving"} aria-busy={state.kind === "saving"} className="btn btn-primary w-full sm:w-auto">

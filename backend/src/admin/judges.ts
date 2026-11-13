@@ -2,6 +2,7 @@ import { z } from "zod";
 import { writeAudit } from "../auth/audit.ts";
 import { generatePassword, hashPassword, type Argon2Cost } from "../auth/password.ts";
 import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
+import { DatabaseError } from "../db/errors.ts";
 import { asDate } from "../db/values.ts";
 import { AppError } from "../http/errors.ts";
 
@@ -37,6 +38,7 @@ export const assignJudgeSchema = z.strictObject({
 });
 
 const n = (v: unknown): number => Number(v ?? 0);
+const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : asDate(v).toISOString());
 
 export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
 
@@ -172,7 +174,8 @@ export async function provisionJudge(
         generatedPassword,
       };
     } catch (err: unknown) {
-      if ((err as { code?: string })?.code === "ER_DUP_ENTRY" && attempt < 2) {
+      // The database layer reports any unique-key clash as DatabaseError(constraint "unique"); the e-mail was checked above, so it is the code.
+      if (err instanceof DatabaseError && err.constraint === "unique" && attempt < 2) {
         judgeCode = generateJudgeCode();
         continue;
       }

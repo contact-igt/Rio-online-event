@@ -22,12 +22,7 @@ export type JudgeEntryDetail = {
     nameEn: string;
   };
   hasVideo: boolean;
-  answers: {
-    key: string;
-    promptTa: string;
-    promptEn: string;
-    value: string | number | string[] | null;
-  }[];
+  // No answers: a judge scores the video by entry code only and never receives school, address, PIN or any personal detail.
   score: {
     marks: number | null;
     comments: string | null;
