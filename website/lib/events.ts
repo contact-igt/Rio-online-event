@@ -66,9 +66,9 @@ export const rules = {
 };
 
 export const prizes = [
-  { place: "1st Prize", placeTa: "முதல் பரிசு", amount: 5000, formatted: "₹5,000", medal: "🥇" },
-  { place: "2nd Prize", placeTa: "இரண்டாம் பரிசு", amount: 3000, formatted: "₹3,000", medal: "🥈" },
-  { place: "3rd Prize", placeTa: "மூன்றாம் பரிசு", amount: 2000, formatted: "₹2,000", medal: "🥉" },
+  { place: "1st Prize", placeTa: "முதல் பரிசு", amount: 3000, formatted: "₹3,000", medal: "🥇" },
+  { place: "2nd Prize", placeTa: "இரண்டாம் பரிசு", amount: 2000, formatted: "₹2,000", medal: "🥈" },
+  { place: "3rd Prize", placeTa: "மூன்றாம் பரிசு", amount: 1000, formatted: "₹1,000", medal: "🥉" },
 ] as const;
 
 // Award categories in Tamil, as given by the owner on 2026-11-12 (they replace the poster's six English names). Which competition each
