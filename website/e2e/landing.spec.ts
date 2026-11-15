@@ -93,7 +93,7 @@ test.describe("structure and content", () => {
     expect(await page.locator("a[href$='/register']").count()).toBe(0);
   });
 
-  test("one header, one main, a navy footer with the logo on a white chip and no third-party request", async ({ page }) => {
+  test("one header, one main, a navy footer with the logo on a white chip, and no third party but the Meta Pixel", async ({ page }) => {
     const hosts = new Set<string>();
     page.on("request", (r) => hosts.add(new URL(r.url()).host));
     await page.goto("/");
@@ -101,7 +101,7 @@ test.describe("structure and content", () => {
     expect(await page.locator("header").count()).toBe(1);
     expect(await page.locator("main").count()).toBe(1);
     await expect(page.locator("footer")).toContainText("Rio Hospital for Women & Children");
-    expect([...hosts]).toEqual(["localhost:3100"]);
+    expect([...hosts].filter((h) => !["localhost:3100", "connect.facebook.net", "www.facebook.com"].includes(h))).toEqual([]); // owner, 2026-11-15
   });
 });
 
