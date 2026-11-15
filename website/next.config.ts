@@ -7,15 +7,17 @@ const isDev = process.env.NODE_ENV !== "production";
 // video's length locally.
 const r2Account = process.env.RIO_UPLOADS_ENABLED === "yes" && /^[0-9a-f]{32}$/i.test(process.env.R2_ACCOUNT_ID ?? "") ? process.env.R2_ACCOUNT_ID : null;
 const r2Origin = r2Account ? ` https://${r2Account}.r2.cloudflarestorage.com` : "";
-// No third-party origins anywhere else. Next.js injects inline bootstrap scripts, so
+// The only other third party is the Meta Pixel on public pages (owner, 2026-11-15; components/meta-pixel.tsx): its script from
+// connect.facebook.net and its reports to www.facebook.com. Next.js injects inline bootstrap scripts, so
 // script-src needs 'unsafe-inline' until pages move to nonce-based CSP (M8 hardening).
+const meta = { script: " https://connect.facebook.net", report: " https://www.facebook.com" };
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${meta.script}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob:${meta.report}`,
   "font-src 'self'",
-  `connect-src 'self'${r2Origin}${isDev ? " ws:" : ""}`,
+  `connect-src 'self'${r2Origin}${meta.script}${meta.report}${isDev ? " ws:" : ""}`,
   "media-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
