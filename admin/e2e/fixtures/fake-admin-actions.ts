@@ -1,12 +1,12 @@
 // Stands in for app/admin/judges/actions.ts in the offline admin tests. Calls are recorded on window.__adminCalls and answered from
 // window.__adminScript (one queue per action); "hold" keeps the request open until window.__adminRelease() is called.
 type Step = { ok: boolean; [k: string]: unknown } | "throw" | "hold";
-type Fn = "provision" | "reset" | "active";
+type Fn = "provision" | "reset" | "active" | "delete" | "purge" | "restore" | "update";
 
 declare global {
   interface Window {
     __adminCalls: { fn: Fn; input: Record<string, unknown> }[];
-    __adminScript?: { provision?: Step[]; reset?: Step[]; active?: Step[] };
+    __adminScript?: { provision?: Step[]; reset?: Step[]; active?: Step[]; delete?: Step[]; purge?: Step[]; restore?: Step[]; update?: Step[] };
     __adminRelease?: () => void;
   }
 }
@@ -26,3 +26,10 @@ async function answer(fn: Fn, input: Record<string, unknown>) {
 export const provisionJudge = (input: Record<string, unknown>) => answer("provision", input);
 export const resetJudgePassword = (input: Record<string, unknown>) => answer("reset", input);
 export const setJudgeActive = (input: Record<string, unknown>) => answer("active", input);
+export const deleteJudge = (input: Record<string, unknown>) => answer("delete", input);
+export const purgeJudge = (input: Record<string, unknown>) => answer("purge", input);
+export const restoreJudge = (input: Record<string, unknown>) => answer("restore", input);
+export const updateJudge = async (input: Record<string, unknown>) => {
+  const result = await answer("update", input);
+  return result.ok ? { ...result, name: String(input.displayName ?? ""), email: String(input.email ?? "") } : result;
+};

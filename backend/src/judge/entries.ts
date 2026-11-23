@@ -262,7 +262,7 @@ export async function saveScore(
       await tx.query(
         `
         UPDATE scores
-        SET marks_hundredths = ?, comments = ?, status = ?, updated_at = ?, finalized_at = ?
+        SET marks_hundredths = ?, comments = ?, status = ?, updated_at = ?, finalized_at = ?, unlocked_by = NULL, unlocked_at = NULL
         WHERE judge_id = ? AND submission_id = ?
         `,
         [marksHundredths, comments, status, now, finalizedAt, actor.judgeId, submissionId],

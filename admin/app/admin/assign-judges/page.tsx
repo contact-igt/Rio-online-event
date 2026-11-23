@@ -30,7 +30,7 @@ export default async function AssignJudgesPage() {
         <span lang="ta" className="block">நடுவர் ஒதுக்கீடு</span>
         <span lang="en" className="mt-0.5 block text-base font-medium leading-snug text-rio-slate sm:text-lg">Assign Judges</span>
       </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-rio-slate">Tick two or three judges for each competition and press Assign. Every ticked judge scores every submitted entry, and the ranking uses their average. Assigning is safe to repeat: press it again after new entries arrive.</p>
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-rio-slate">Tick or untick judges for each competition and press Save. Ticked judges score every submitted entry, and a judge with existing scores cannot be removed.</p>
 
       {!competitions.ok && <p role="alert" className="card mt-6 p-4 font-semibold text-rio-error">Competition data is unavailable. No judge assignment was changed.</p>}
 

@@ -234,7 +234,7 @@ describe.each(dialects)("%s admin dashboard and settings", (dialect: Dialect) =>
       expect(cleared.body).toMatchObject({ registrationOpen: false, opensAt: null, closesAt: null, resultsPublishAt: null });
     });
     it("never reschedules results that are already published", async () => {
-      const publishedAt = new Date("2026-11-14T00:00:00.000Z");
+      const publishedAt = new Date(Date.now() + DAY);
       const originalClock = clock.t;
       // (the first session would be idle here)
       await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1' WHERE id = 1", [new Date(publishedAt.getTime() - 10 * DAY), new Date(publishedAt.getTime() - 5 * DAY)]);

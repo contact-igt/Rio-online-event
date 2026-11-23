@@ -43,7 +43,7 @@ describe("Assign Judges", () => {
     expect(html).toContain("3 submitted · 1 without a judge");
     expect(html).toContain("Anu (JDG-AB12C), Ravi (JDG-RV9QQ)"); // two judges on one competition, each listed once
     expect(html).toContain("none yet / இன்னும் இல்லை");
-    expect(html).toContain("two or three judges");
+    expect(html).toContain("Tick or untick judges");
     expect(html).toContain('id="judge-kathai-sollum-kutties"');
     expect(html).toContain('id="judge-kutti-pesalar"');
     expect(html).not.toContain("Old (JDG-ZZ99Z)");
@@ -55,11 +55,11 @@ describe("Assign Judges", () => {
     const [story, speaker] = html.split('id="judge-kutti-pesalar"');
     expect(story.match(/type="checkbox"/g)).toHaveLength(2); // Anu and Ravi; the inactive judge is not offered
     expect(story.match(/type="checkbox"[^>]*checked=""/g)).toHaveLength(2); // both already judge this competition
-    expect(story).toContain("Assign 2 judges");
+    expect(story).toContain("Save judges");
     expect(speaker.match(/type="checkbox"/g)).toHaveLength(2);
     expect(speaker).not.toMatch(/type="checkbox"[^>]*checked=""/); // nobody on this one yet
     expect(speaker).not.toContain("Assigned / ஒதுக்கப்பட்டவர்");
-    expect(html).toContain("Unticking does not remove a judge.");
+    expect(html).toContain("Uncheck a judge and press Save");
     expect(html).not.toContain("<select");
     if (process.env.RIO_WRITE_PREVIEW) writeFileSync(`${process.env.RIO_WRITE_PREVIEW}/assign.html`, html);
   });

@@ -4,3 +4,6 @@ import { fakeSupabase } from "./fake-supabase";
 export async function requireStaff() {
   return { supabase: fakeSupabase(window.__staffData ?? {}) };
 }
+export async function staffSessionCheck() {
+  return { ok: true as const, session: { csrfToken: "test-csrf" } };
+}

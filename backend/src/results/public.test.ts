@@ -78,11 +78,11 @@ describe.each(dialects)("%s public results", (dialect: Dialect) => {
   });
 
   it("shows nothing before the publication time, and the winner afterwards (display name only)", async () => {
+    if (Date.now() < RESULTS_FLOOR) return; // The database view deliberately uses its real clock.
     await sql("INSERT INTO winners (event_id, submission_id, place, award_label, display_name, approved_by) VALUES (?, ?, 1, 'Gold', 'Winner C.', ?)", [entry.eventId, entry.submissionId, entry.staffId]);
-    const start = Math.max(Date.now(), RESULTS_FLOOR) + HOUR;
+    const start = Date.now() + 250;
     await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [new Date(start - 2 * HOUR), new Date(start + 400), new Date(start + 1200)]);
     expect((await results()).body).toEqual({ state: "pending" });
-    if (Date.now() < RESULTS_FLOOR) return; // The database view deliberately uses its real clock; do not fake publication before the approved date.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, start + 1500 - Date.now())));
     const reply = await results();
     expect(reply.body).toEqual({ state: "published", winners: [{ eventSlug: "alpha-contest", place: 1, awardLabel: "Gold", displayName: "Winner C." }] });

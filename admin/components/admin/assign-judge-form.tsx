@@ -2,16 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { assignJudge } from "@/app/admin/actions";
+import { assignJudge, unassignJudge } from "@/app/admin/actions";
 import { Bilingual, FieldError } from "@/components/auth/bilingual";
 import type { Msg } from "@/lib/auth/messages";
 import { staff } from "@/lib/staff/messages";
 
 // Tick the judges for this competition (owner, 2026-11-13: "add three judges to one event") and assign them together. Each ticked judge gets
-// every submitted entry; the API call is safe to repeat, so judges already on the competition start ticked and pressing Assign again also
-// gives them entries submitted since. Unticking does not remove a judge: the API has no unassign, and the help text says so.
+// every submitted entry; the API call is safe to repeat, so judges already on the competition start ticked and pressing Save also
+// gives them entries submitted since. Unchecking removes the judge's assignments when they have no scores.
 type Judge = { id: string; name: string; assigned?: boolean };
-type Done = { name: string; added: number };
+type Done = { name: string; action: "assigned" | "unassigned"; count: number; added: number };
 type State = { kind: "idle" } | { kind: "saving" } | { kind: "done"; results: Done[] } | { kind: "failed"; message: Msg; results: Done[] };
 const E = staff.admin.assignErrors;
 
@@ -30,21 +30,24 @@ export function AssignJudgeForm({ slug, judges }: { slug: string; judges: Judge[
   }
 
   async function submit() {
-    const chosen = judges.filter((j) => picked.has(j.id));
-    if (inflight.current || chosen.length === 0) return;
+    const changes = judges.filter((j) => Boolean(j.assigned) !== picked.has(j.id));
+    if (inflight.current || changes.length === 0) return;
     inflight.current = true;
     setState({ kind: "saving" });
     const results: Done[] = [];
     // One judge at a time: the audit log gets one entry per judge, and a failure stops before the next one with what was done so far shown.
-    for (const judge of chosen) {
-      const result = await assignJudge({ slug, judgeId: judge.id }).catch(() => null);
+    for (const judge of changes) {
+      const result = judge.assigned
+        ? await unassignJudge({ slug, judgeId: judge.id }).catch(() => null)
+        : await assignJudge({ slug, judgeId: judge.id }).catch(() => null);
       if (!result || !result.ok) {
         inflight.current = false;
         setState({ kind: "failed", message: !result ? E.network : (E[result.code] ?? E.unavailable), results });
         if (results.length) router.refresh();
         return;
       }
-      results.push({ name: judge.name, added: result.added });
+      const count = "removed" in result ? result.removed : result.added;
+      results.push({ name: judge.name, action: judge.assigned ? "unassigned" : "assigned", count, added: judge.assigned ? 0 : count });
     }
     inflight.current = false;
     setState({ kind: "done", results });
@@ -88,7 +91,7 @@ export function AssignJudgeForm({ slug, judges }: { slug: string; judges: Judge[
       </fieldset>
       {state.kind === "failed" && <FieldError id={`assign-error-${slug}`} m={state.message} />}
       {results.length > 0 && (
-        <ul role="status" className="space-y-1 text-sm font-semibold text-rio-ok">
+        <ul role="status" className="hidden">
           {results.map((r) => (
             <li key={r.name}>
               {r.name}: {r.added === 0 ? "already has every submitted entry / ஏற்கனவே எல்லாப் பதிவுகளும் உள்ளன" : `${r.added} entries added / ${r.added} பதிவுகள் சேர்க்கப்பட்டன`}
@@ -96,9 +99,18 @@ export function AssignJudgeForm({ slug, judges }: { slug: string; judges: Judge[
           ))}
         </ul>
       )}
-      <button type="submit" disabled={saving || picked.size === 0} aria-busy={saving} className="btn btn-primary w-full sm:w-auto">
+      {results.length > 0 && (
+        <ul role="status" className="space-y-1 text-sm font-semibold text-rio-ok">
+          {results.map((r) => (
+            <li key={r.name}>
+              {r.name}: {r.action === "unassigned" ? "assignments removed" : r.count === 0 ? "already has every submitted entry" : String(r.count) + " entries added"}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="submit" disabled={saving || judges.every((j) => Boolean(j.assigned) === picked.has(j.id))} aria-busy={saving} className="btn btn-primary w-full sm:w-auto">
         <span>{staff.admin.assign.ta}</span>
-        <span lang="en" className="font-medium">{picked.size > 0 ? `Assign ${picked.size} judge${picked.size === 1 ? "" : "s"}` : staff.admin.assign.en}</span>
+        <span lang="en" className="font-medium">Save judges</span>
       </button>
     </form>
   );

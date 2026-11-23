@@ -13,6 +13,7 @@ import { captureLogger, listen, testConfig } from "../test-helpers.ts";
 const ORIGIN = "http://admin.test";
 const COST = { memoryKib: 1024, passes: 1 };
 const TRACKING = "zz_scoring_migrations";
+const HOUR = 3_600_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Who = { cookie: string; csrf: string; id: number };
@@ -201,7 +202,7 @@ describe.each(dialects)("%s admin scoring", (dialect: Dialect) => {
     it("once the publication time has passed, winners are frozen: no adding, no removing", async () => {
       const admin = await signIn("admin");
       expect((await approve(admin, { entryCode: "RIOSCOREB2", place: 3, displayName: "Bala" })).status).toBe(201);
-      const publishAt = new Date(Date.UTC(2026, 10, 14, 4, 30)); // 14 Nov 2026, 10:00 IST: on or after the approved floor
+      const publishAt = new Date(Date.now() + HOUR); // Keep the fixture ahead of the database's real clock.
       await sql("UPDATE event_settings SET submissions_open_at = ?, submissions_close_at = ?, guardian_consent_version = 'v1', results_publish_at = ? WHERE id = 1", [
         new Date(Date.UTC(2026, 10, 10)), new Date(Date.UTC(2026, 10, 13)), publishAt,
       ]);
@@ -221,5 +222,38 @@ describe.each(dialects)("%s admin scoring", (dialect: Dialect) => {
         await sql("UPDATE event_settings SET results_publish_at = NULL, submissions_open_at = NULL, submissions_close_at = NULL, guardian_consent_version = NULL WHERE id = 1");
       }
     });
+  });
+
+  it("lets an administrator reopen one final score and audits the unlock", async () => {
+    const admin = await signIn("admin");
+    const target = (await sql<{ entry_code: string; judge_code: string }>(
+      `SELECT s.entry_code, p.judge_code
+       FROM scores sc
+       JOIN submissions s ON s.id = sc.submission_id
+       JOIN judge_profiles p ON p.user_id = sc.judge_id
+       WHERE sc.status = 'final'
+       ORDER BY sc.id LIMIT 1`,
+    )).rows[0]!;
+
+    const reopened = await call("/api/v1/admin/scores/unlock", {
+      method: "POST",
+      who: admin,
+      body: { entryCode: target.entry_code, judgeCode: target.judge_code, confirm: true },
+    });
+    expect(reopened.status, reopened.text).toBe(200);
+    expect(reopened.body).toMatchObject({ ok: true, slug: "kathai" });
+
+    const row = (await sql<{ status: string; unlocked_by: number | null; unlocked_at: string | null }>(
+      `SELECT sc.status, sc.unlocked_by, sc.unlocked_at
+       FROM scores sc JOIN submissions s ON s.id = sc.submission_id
+       JOIN judge_profiles p ON p.user_id = sc.judge_id
+       WHERE s.entry_code = ? AND p.judge_code = ?`,
+      [target.entry_code, target.judge_code],
+    )).rows[0]!;
+    expect(row).toMatchObject({ status: "draft", unlocked_by: admin.id });
+    expect(row.unlocked_at).not.toBeNull();
+
+    const audit = (await sql<{ action: string }>("SELECT action FROM audit_log WHERE action = 'admin.score_unlock' ORDER BY id DESC LIMIT 1")).rows[0];
+    expect(audit?.action).toBe("admin.score_unlock");
   });
 });

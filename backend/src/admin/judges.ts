@@ -379,6 +379,50 @@ export async function assignJudgeToCompetition(
   return { ok: true, added };
 }
 
+export async function unassignJudgeFromCompetition(
+  db: DatabaseAdapter,
+  now: Date,
+  actor: { staffId: number; requestId: string },
+  input: { slug: string; judgeId: number },
+): Promise<{ ok: true; removed: number }> {
+  const event = await db.query<{ id: unknown }>("SELECT id FROM events WHERE slug = ?", [input.slug]);
+  if (event.rows.length === 0) throw new AppError(404, "event_not_found", "Competition not found.");
+  const eventId = Number(event.rows[0]?.id);
+
+  const scored = await db.query<{ n: unknown }>(
+    `SELECT COUNT(*) AS n
+     FROM scores sc
+     JOIN judge_assignments a ON a.judge_id = sc.judge_id AND a.submission_id = sc.submission_id
+     WHERE a.event_id = ? AND a.judge_id = ?`,
+    [eventId, input.judgeId],
+  );
+  if (Number(scored.rows[0]?.n ?? 0) > 0) {
+    throw new AppError(409, "judge_has_scores", "This judge cannot be removed because they already have scores in this competition.");
+  }
+
+  let removed = 0;
+  await db.transaction(async (tx) => {
+    const result = await tx.query(
+      "DELETE FROM judge_assignments WHERE event_id = ? AND judge_id = ?",
+      [eventId, input.judgeId],
+    );
+    removed = result.affectedRows;
+    if (removed > 0) {
+      await writeAudit(tx, now, {
+        actorType: "staff",
+        actorStaffId: actor.staffId,
+        action: "judge.unassign_competition",
+        entityType: "staff_user",
+        entityId: input.judgeId,
+        requestId: actor.requestId,
+        details: { slug: input.slug, removed },
+      });
+    }
+  });
+
+  return { ok: true, removed };
+}
+
 /** Brings a soft-deleted judge back to the roster. The account stays switched OFF: the Super Admin reactivates it on purpose. */
 export async function restoreJudge(db: DatabaseAdapter, now: Date, actor: { staffId: number; requestId: string }, input: { judgeId: number }): Promise<{ ok: true }> {
   await db.transaction(async (tx) => {

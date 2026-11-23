@@ -315,6 +315,22 @@ describe.each(dialects)("%s judge management and judging portal", (dialect: Dial
     expect(assignRes.status).toBe(200);
     expect(assignRes.body.ok).toBe(true);
 
+    const unassignRes = await call("/api/v1/admin/competitions/malalai-mozhi/assign-judge/" + judge.id, {
+      method: "DELETE",
+      who: admin,
+    });
+    expect(unassignRes.status, unassignRes.text).toBe(200);
+    expect(unassignRes.body).toMatchObject({ ok: true, removed: 1 });
+    const afterUnassign = await call("/api/v1/judge/entries", { who: judge });
+    expect(afterUnassign.body.entries.find((e: Json) => e.entryCode === entryCode)).toBeUndefined();
+
+    const assignAgain = await call("/api/v1/admin/competitions/malalai-mozhi/assign-judge", {
+      method: "POST",
+      who: admin,
+      body: { judgeId: judge.id },
+    });
+    expect(assignAgain.status, assignAgain.text).toBe(200);
+
     // Judge fetches assigned entries
     const entriesRes = await call("/api/v1/judge/entries", { who: judge });
     expect(entriesRes.status).toBe(200);
@@ -377,6 +393,13 @@ describe.each(dialects)("%s judge management and judging portal", (dialect: Dial
       body: { marks: 9.5, comments: "Changed mind", final: true },
     });
     expect(lockedRes.status).toBe(403);
+
+    const blockedUnassign = await call("/api/v1/admin/competitions/malalai-mozhi/assign-judge/" + judge.id, {
+      method: "DELETE",
+      who: admin,
+    });
+    expect(blockedUnassign.status, blockedUnassign.text).toBe(409);
+    expect(blockedUnassign.body.error.code).toBe("judge_has_scores");
   });
 
   it("a judge sees and touches only their own assignments, and no admin route", async () => {

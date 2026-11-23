@@ -1,10 +1,11 @@
 "use server";
 
-import { assignJudgeApi } from "@/lib/admin/api";
+import { assignJudgeApi, unassignJudgeApi } from "@/lib/admin/api";
 import { staffSession } from "@/lib/staff/auth";
 import type { WinnerResult } from "@/lib/judging/winners";
 
-export type AssignResult = { ok: true; added: number } | { ok: false; code: "invalid" | "notAllowed" | "judgeNotFound" | "tooMany" | "unavailable" };
+export type AssignResult = { ok: true; added: number } | { ok: false; code: "invalid" | "notAllowed" | "judgeNotFound" | "tooMany" | "judgeHasScores" | "unavailable" };
+export type UnassignResult = { ok: true; removed: number } | { ok: false; code: "invalid" | "notAllowed" | "judgeNotFound" | "tooMany" | "judgeHasScores" | "backendNotUpdated" | "unavailable" };
 
 export async function assignJudge(input: { slug: string; judgeId: string }): Promise<AssignResult> {
   const session = await staffSession("admin");
@@ -15,6 +16,21 @@ export async function assignJudge(input: { slug: string; judgeId: string }): Pro
   }
   // 404: the judge is not an active judge, or the competition is unknown. 409: the database refused (an inactive judge).
   if (reply.status === 404 || reply.status === 409) return { ok: false, code: "judgeNotFound" };
+  if (reply.status === 400) return { ok: false, code: "invalid" };
+  if (reply.status === 401 || reply.status === 403) return { ok: false, code: "notAllowed" };
+  if (reply.status === 429) return { ok: false, code: "tooMany" };
+  return { ok: false, code: "unavailable" };
+}
+
+export async function unassignJudge(input: { slug: string; judgeId: string }): Promise<UnassignResult> {
+  const session = await staffSession("admin");
+  if (!session) return { ok: false, code: "notAllowed" };
+  const reply = await unassignJudgeApi(input.slug, input.judgeId, session.csrfToken);
+  if (reply.status === 200 && reply.body?.ok) {
+    return { ok: true, removed: reply.body.removed };
+  }
+  if (reply.status === 404) return { ok: false, code: reply.apiCode === "judge_not_found" ? "judgeNotFound" : "backendNotUpdated" };
+  if (reply.status === 409 && reply.apiCode === "judge_has_scores") return { ok: false, code: "judgeHasScores" };
   if (reply.status === 400) return { ok: false, code: "invalid" };
   if (reply.status === 401 || reply.status === 403) return { ok: false, code: "notAllowed" };
   if (reply.status === 429) return { ok: false, code: "tooMany" };

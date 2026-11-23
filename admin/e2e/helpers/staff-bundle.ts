@@ -13,7 +13,10 @@ export const staffBundle = () =>
     "@/lib/judging/server": "e2e/fixtures/fake-judging-server.ts",
     "@/app/judge/actions": "e2e/fixtures/fake-judge-actions.ts",
     "@/app/admin/judges/actions": "e2e/fixtures/fake-admin-actions.ts",
+    next: "e2e/fixtures/fake-next.ts",
     "next/navigation": "e2e/fixtures/fake-navigation.ts",
+    "next/headers": "e2e/fixtures/fake-headers.ts",
+    "next/font/google": "e2e/fixtures/fake-next-font.ts",
     "next/link": "e2e/fixtures/fake-link.tsx",
   });
 
