@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { deleteJudge, purgeJudge, resetJudgePassword, restoreJudge, setJudgeActive, updateJudge } from "@/app/admin/judges/actions";
+import { deleteJudge, loadJudgePurgeImpact, purgeJudge, resetJudgePassword, restoreJudge, setJudgeActive, updateJudge } from "@/app/admin/judges/actions";
 import { CredentialsPanel } from "@/components/admin/credentials-panel";
+import type { JudgePurgeImpact } from "@/lib/admin/api";
 import type { AdminJudgeRow, DeletedJudgeRow } from "@/lib/admin/api";
 import { staff } from "@/lib/staff/messages";
 
@@ -268,10 +269,29 @@ export function RestoreJudgeDialog({ judge, onClose, onDone }: { judge: DeletedJ
 
 export function PurgeJudgeDialog({ judge, onClose, onDone }: { judge: DeletedJudgeRow; onClose: () => void; onDone: () => void }) {
   const [typed, setTyped] = useState("");
+  const [understood, setUnderstood] = useState(false);
+  const [impact, setImpact] = useState<JudgePurgeImpact | null>(null);
+  const [loadingImpact, setLoadingImpact] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inflight = useRef(false);
-  const ready = typed === "DELETE";
+  const ready = Boolean(impact?.canPurge && understood && typed.trim().toUpperCase() === judge.judgeCode);
+
+  useEffect(() => {
+    let alive = true;
+    setLoadingImpact(true);
+    void loadJudgePurgeImpact({ judgeId: String(judge.id) }).then((result) => {
+      if (!alive) return;
+      setLoadingImpact(false);
+      if (result.ok) setImpact(result.impact);
+      else setError(M.deletedErrors[result.code] ?? M.impactError);
+    }).catch(() => {
+      if (!alive) return;
+      setLoadingImpact(false);
+      setError(M.impactError);
+    });
+    return () => { alive = false; };
+  }, [judge.id]);
 
   async function run() {
     if (!ready || inflight.current) return;
@@ -293,15 +313,56 @@ export function PurgeJudgeDialog({ judge, onClose, onDone }: { judge: DeletedJud
         {judge.name} <span className="font-mono text-xs text-rio-slate">{judge.judgeCode}</span>
       </p>
       <p className="mt-2 text-sm text-rio-slate">{M.purgeWarning}</p>
+      <p className="mt-2 text-xs font-semibold text-rio-navy">{M.activeUnaffected}</p>
+      <section className="mt-4 rounded-2xl border border-rio-navy/10 bg-rio-mist/50 p-3" aria-label={bilingual(M.impactTitle)}>
+        <h3 className="text-sm font-semibold text-rio-navy">{M.impactTitle.en}</h3>
+        {loadingImpact && <p className="mt-2 text-sm text-rio-slate">{M.impactLoading}</p>}
+        {impact && (
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-rio-slate">
+            <span>{M.impactAssignments}</span><strong className="text-right text-rio-navy">{impact.counts.assignments}</strong>
+            <span>{M.impactAssignmentsCreated}</span><strong className="text-right text-rio-navy">{impact.counts.assignmentsCreated}</strong>
+            <span>{M.impactScores}</span><strong className="text-right text-rio-navy">{impact.counts.scores}</strong>
+            <span>{M.impactScoresUnlocked}</span><strong className="text-right text-rio-navy">{impact.counts.scoresUnlocked}</strong>
+            <span>{M.impactFinalScores}</span><strong className="text-right text-rio-navy">{impact.counts.finalScores}</strong>
+            <span>{M.impactDraftScores}</span><strong className="text-right text-rio-navy">{impact.counts.draftScores}</strong>
+            <span>{M.impactAudit}</span><strong className="text-right text-rio-navy">{impact.counts.auditActivity}</strong>
+            <span>{M.impactSessions}</span><strong className="text-right text-rio-navy">{impact.counts.sessions}</strong>
+            <span>{M.impactReviews}</span><strong className="text-right text-rio-navy">{impact.counts.duplicateReviews}</strong>
+            <span>{M.impactWinners}</span><strong className="text-right text-rio-navy">{impact.counts.winners}</strong>
+            <span>{M.impactQuestionSets}</span><strong className="text-right text-rio-navy">{impact.counts.questionSets}</strong>
+            <span>{M.impactSettings}</span><strong className="text-right text-rio-navy">{impact.counts.settingsChanges}</strong>
+          </div>
+        )}
+        {impact && !impact.canPurge && (
+          <div className="mt-3 rounded-xl bg-rio-error/10 p-3 text-sm text-rio-error">
+            <p className="font-semibold">{M.impactBlocked}</p>
+            <ul className="mt-1 list-disc pl-5">
+              {impact.blockers.map((blocker) => <li key={blocker}>{({
+                assignmentsCreated: M.impactBlockAssignments,
+                scoresUnlocked: M.impactBlockScores,
+                winners: M.impactBlockWinners,
+                questionSets: M.impactBlockQuestionSets,
+                settingsChanges: M.impactBlockSettings,
+              } as Record<string, string>)[blocker]}</li>)}
+            </ul>
+          </div>
+        )}
+      </section>
+      {impact?.canPurge && (
+        <label className="mt-4 flex gap-2 text-sm text-rio-navy">
+          <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} disabled={busy} className="mt-0.5 h-4 w-4 accent-rio-rose" />
+          <span>{M.purgeConfirm}</span>
+        </label>
+      )}
       <form onSubmit={(event) => { event.preventDefault(); void run(); }} className="mt-4">
         <label className="block text-xs font-semibold text-rio-navy">
-          {M.typeDelete}
+          {M.typeJudgeCode} <span className="font-mono">{judge.judgeCode}</span>
           <input value={typed} onChange={(event) => setTyped(event.target.value)} disabled={busy} autoComplete="off" autoCapitalize="characters" spellCheck={false} className="field mt-1 h-11 min-h-11 text-sm" />
         </label>
         {error && <p role="alert" className="mt-3 text-sm font-semibold text-rio-error">{error}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} disabled={busy} className="btn btn-outline min-h-11 !px-4 text-sm">{bilingual(M.cancel)}</button>
-          <button type="submit" disabled={!ready || busy} aria-busy={busy} className="btn btn-primary min-h-11 !px-4 text-sm">{bilingual(busy ? M.purging : M.purge)}</button>
+          <button type="submit" disabled={!ready || busy || loadingImpact} aria-busy={busy} className="btn btn-primary min-h-11 !px-4 text-sm">{bilingual(busy ? M.purging : M.purge)}</button>
         </div>
       </form>
     </Shell>

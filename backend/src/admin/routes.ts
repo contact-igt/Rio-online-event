@@ -12,7 +12,7 @@ import {
   questionBody, reorderBody, reorderQuestions, updateQuestion,
 } from "./questions.ts";
 import {
-  assignJudgeToCompetition, deleteJudge, listDeletedJudges, purgeJudge, restoreJudge, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive, unassignJudgeFromCompetition,
+  assignJudgeToCompetition, deleteJudge, listDeletedJudges, loadJudgePurgeImpact, purgeJudge, restoreJudge, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive, unassignJudgeFromCompetition,
   updateJudge, updateJudgeSchema,
 } from "./judges.ts";
 import { deleteRegistrationByAdmin, mintAdminPlaybackUrl, purgeRegistrationByAdmin, deletedListQuery, editBody, listDeletedRegistrations, listQuery, listRegistrations, loadRegistration, restoreRegistrationByAdmin, updateRegistrationByAdmin } from "./registrations.ts";
@@ -45,6 +45,8 @@ const unlockScoreBody = z.strictObject({
   judgeCode: z.string().regex(/^JDG-[A-Z0-9]{1,16}$/u),
   confirm: z.literal(true),
 });
+
+const purgeJudgeBody = z.strictObject({ confirm: z.literal(true) });
 
 /** Strict parse. A failure reports field codes only, never the text that was typed. */
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
@@ -206,10 +208,14 @@ export function adminRouter(deps: AuthDeps, video: VideoStore | null = null): Ro
   }));
   // The Deleted judges view: Super Admin only, like every change to a judge account.
   router.get("/judges/deleted", ...superAdmin, guarded(async (_req, res) => void res.json(await listDeletedJudges(deps.db))));
+  router.get("/judges/:judgeId/purge-impact", ...superAdmin, guarded(async (req, res) => {
+    res.json(await loadJudgePurgeImpact(deps.db, idOf(req.params.judgeId)));
+  }));
   router.post("/judges/:judgeId/restore", ...superAdmin, guarded(async (req, res) => {
     res.json(await restoreJudge(deps.db, now(), actor(res), { judgeId: idOf(req.params.judgeId) }));
   }));
   router.delete("/judges/:judgeId/permanent", ...superAdmin, guarded(async (req, res) => {
+    parse(purgeJudgeBody, req.body);
     res.json(await purgeJudge(deps.db, now(), actor(res), { judgeId: idOf(req.params.judgeId) }));
   }));
   router.post("/competitions/:slug/assign-judge", ...admin, guarded(async (req, res) => {

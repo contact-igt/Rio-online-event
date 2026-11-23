@@ -58,6 +58,7 @@ jobs:
     env:
       RIO_REQUIRE_MYSQL_TESTS: "yes"
       RIO_TEST_DATABASE_URL: mysql://rio_test:ci_only@127.0.0.1:3306/rio_test
+      RIO_TEST_DB_ENGINE: mysql
       RIO_TEST_DB_ALLOWED_HOST: 127.0.0.1
     steps:
       - uses: actions/checkout@v4

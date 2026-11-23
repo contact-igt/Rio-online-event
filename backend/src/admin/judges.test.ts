@@ -243,7 +243,7 @@ describe.each(dialects)("%s judge management and judging portal", (dialect: Dial
     expect((await call("/api/v1/admin/judges/999999/reset-password", { method: "POST", who: boss })).status).toBe(404);
   });
 
-  it("deleted judges: Super Admin lists and restores them; purge works only for an account with no history", async () => {
+  it("deleted judges: impact is shown and permanent purge needs explicit confirmation", async () => {
     const boss = await signIn("super_admin");
     const admin = await signIn("admin");
     const active = await signIn("judge"); // signed in, so the audit log names this account
@@ -264,20 +264,26 @@ describe.each(dialects)("%s judge management and judging portal", (dialect: Dial
     const back = (await call("/api/v1/admin/judges", { who: boss })).body.judges.find((j: Json) => j.id === fresh.id);
     expect(back).toMatchObject({ active: false });
 
-    // purge: not deleted -> 404; wrong role -> 403; history -> 409; clean -> gone
-    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss })).status).toBe(404);
+    // purge: not deleted -> 404; wrong role -> 403; missing confirmation -> 400
+    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss, body: { confirm: true } })).status).toBe(404);
     expect((await call(`/api/v1/admin/judges/${fresh.id}`, { method: "DELETE", who: boss })).status).toBe(200);
-    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: admin })).status).toBe(403);
-    expect((await call(`/api/v1/admin/judges/${active.id}/permanent`, { method: "DELETE", who: boss })).status).toBe(409); // has recorded activity
+    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: admin, body: { confirm: true } })).status).toBe(403);
+    const impact = await call(`/api/v1/admin/judges/${active.id}/purge-impact`, { who: boss });
+    expect(impact.status).toBe(200);
+    expect(impact.body.counts.auditActivity).toBeGreaterThan(0);
+    expect(impact.body.canPurge).toBe(true);
+    expect((await call(`/api/v1/admin/judges/${active.id}/permanent`, { method: "DELETE", who: boss })).status).toBe(400);
     expect(Number((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM staff_users WHERE id = ?", [active.id])).rows[0]!.n)).toBe(1);
-    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss })).status).toBe(200);
+    expect((await call(`/api/v1/admin/judges/${active.id}/permanent`, { method: "DELETE", who: boss, body: { confirm: true } })).status).toBe(200);
+    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss, body: { confirm: true } })).status).toBe(200);
     for (const table of ["staff_users WHERE id", "judge_profiles WHERE user_id", "staff_sessions WHERE staff_id"]) {
       expect(Number((await sql<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} = ?`, [fresh.id])).rows[0]!.n), table).toBe(0);
     }
+    expect(Number((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM audit_log WHERE actor_staff_id = ?", [active.id])).rows[0]!.n)).toBe(0);
     const audit = (await sql<{ details: unknown }>("SELECT details FROM audit_log WHERE action = 'judge.purged' AND entity_id = ?", [String(fresh.id)])).rows;
     expect(audit).toHaveLength(1);
     expect(audit[0]!.details ?? null).toBeNull(); // the id only: no name, no e-mail
-    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss })).status).toBe(404); // repeating is harmless
+    expect((await call(`/api/v1/admin/judges/${fresh.id}/permanent`, { method: "DELETE", who: boss, body: { confirm: true } })).status).toBe(404); // repeating is harmless
   });
 
   it("judge can view assigned entries and score 0 to 10", async () => {

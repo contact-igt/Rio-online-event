@@ -1,6 +1,6 @@
 "use server";
 
-import { deleteJudgeApi, provisionJudgeApi, purgeJudgeApi, restoreJudgeApi, resetJudgePasswordApi, setJudgeActiveApi, updateJudgeApi } from "@/lib/admin/api";
+import { deleteJudgeApi, loadJudgePurgeImpactApi, provisionJudgeApi, purgeJudgeApi, restoreJudgeApi, resetJudgePasswordApi, setJudgeActiveApi, updateJudgeApi, type JudgePurgeImpact } from "@/lib/admin/api";
 import { staffSession, staffSessionCheck } from "@/lib/staff/auth";
 import type { InviteResult } from "@/lib/staff/invites";
 import type { ProvisionResult, ResetResult } from "@/lib/staff/provisioning";
@@ -136,7 +136,23 @@ async function deletedJudgeAction(call: (csrf: string) => Promise<{ status: numb
   return { ok: false, code: "unavailable" };
 }
 
-// Super Admin only (checked here and by the API): bring a soft-deleted judge back, or delete one for good when it left no history.
+export type JudgePurgeImpactResult =
+  | { ok: true; impact: JudgePurgeImpact }
+  | { ok: false; code: "sessionExpired" | "notAllowed" | "originNotAllowed" | "notFound" | "unavailable" };
+
+export async function loadJudgePurgeImpact(input: { judgeId: string }): Promise<JudgePurgeImpactResult> {
+  const checked = await staffSessionCheck("super_admin");
+  if (!checked.ok) return { ok: false, code: checked.code };
+  const reply = await loadJudgePurgeImpactApi(input.judgeId);
+  if (reply.status === 200 && reply.body) return { ok: true, impact: reply.body };
+  if (reply.status === 401) return { ok: false, code: "sessionExpired" };
+  if (reply.apiCode === "origin_not_allowed") return { ok: false, code: "originNotAllowed" };
+  if (reply.status === 403) return { ok: false, code: "notAllowed" };
+  if (reply.status === 404) return { ok: false, code: "notFound" };
+  return { ok: false, code: "unavailable" };
+}
+
+// Super Admin only (checked here and by the API): bring a soft-deleted judge back, or permanently purge it after impact confirmation.
 export async function restoreJudge(input: { judgeId: string }): Promise<DeletedJudgeResult> {
   return deletedJudgeAction((csrf) => restoreJudgeApi(input.judgeId, csrf));
 }

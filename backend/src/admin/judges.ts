@@ -41,6 +41,26 @@ const n = (v: unknown): number => Number(v ?? 0);
 
 export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
 
+export type JudgePurgeImpact = {
+  judge: DeletedJudgeRow;
+  counts: {
+    assignments: number;
+    assignmentsCreated: number;
+    scores: number;
+    finalScores: number;
+    draftScores: number;
+    scoresUnlocked: number;
+    auditActivity: number;
+    sessions: number;
+    duplicateReviews: number;
+    winners: number;
+    questionSets: number;
+    settingsChanges: number;
+  };
+  canPurge: boolean;
+  blockers: ("assignmentsCreated" | "scoresUnlocked" | "winners" | "questionSets" | "settingsChanges")[];
+};
+
 export async function listDeletedJudges(db: Queryable): Promise<{ judges: DeletedJudgeRow[] }> {
   const result = await db.query<{ id: unknown; display_name: string; email: string; judge_code: string; deleted_at: unknown }>(
     `SELECT u.id, u.display_name, u.email, p.judge_code, u.deleted_at
@@ -49,6 +69,64 @@ export async function listDeletedJudges(db: Queryable): Promise<{ judges: Delete
      ORDER BY u.deleted_at DESC, u.id DESC`,
   );
   return { judges: result.rows.map((r) => ({ id: n(r.id), name: r.display_name, email: r.email, judgeCode: r.judge_code, deletedAt: asDate(r.deleted_at).toISOString() })) };
+}
+
+/** Shows the linked rows before a permanent purge. Counts are deliberately grouped by what will be removed or what must stay. */
+export async function loadJudgePurgeImpact(db: Queryable, judgeId: number): Promise<JudgePurgeImpact> {
+  const judge = (await db.query<{ id: unknown; display_name: string; email: string; judge_code: string; deleted_at: unknown }>(
+    `SELECT u.id, u.display_name, u.email, p.judge_code, u.deleted_at
+     FROM staff_users u JOIN judge_profiles p ON p.user_id = u.id
+     WHERE u.id = ? AND u.role = 'judge' AND u.deleted_at IS NOT NULL`,
+    [judgeId],
+  )).rows[0];
+  if (!judge) throw new AppError(404, "not_found", "Judge not found.");
+
+  const counts = (await db.query<{
+    assignments: unknown; assignments_created: unknown; scores: unknown; final_scores: unknown; draft_scores: unknown; scores_unlocked: unknown;
+    audit_activity: unknown; sessions: unknown; duplicate_reviews: unknown; winners: unknown; question_sets: unknown; settings_changes: unknown;
+  }>(
+    `SELECT
+      (SELECT COUNT(*) FROM judge_assignments WHERE judge_id = ?) AS assignments,
+      (SELECT COUNT(*) FROM judge_assignments WHERE assigned_by = ?) AS assignments_created,
+      (SELECT COUNT(*) FROM scores WHERE judge_id = ?) AS scores,
+      (SELECT COUNT(*) FROM scores WHERE judge_id = ? AND status = 'final') AS final_scores,
+      (SELECT COUNT(*) FROM scores WHERE judge_id = ? AND status = 'draft') AS draft_scores,
+      (SELECT COUNT(*) FROM scores WHERE unlocked_by = ? AND judge_id <> ?) AS scores_unlocked,
+      (SELECT COUNT(*) FROM audit_log WHERE actor_staff_id = ?) AS audit_activity,
+      (SELECT COUNT(*) FROM staff_sessions WHERE staff_id = ?) AS sessions,
+      (SELECT COUNT(*) FROM duplicate_reviews WHERE decided_by = ?) AS duplicate_reviews,
+      (SELECT COUNT(*) FROM winners WHERE approved_by = ?) AS winners,
+      (SELECT COUNT(*) FROM question_sets WHERE created_by = ? OR published_by = ?) AS question_sets,
+      (SELECT COUNT(*) FROM event_settings WHERE updated_by = ?) AS settings_changes`,
+    [judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId, judgeId],
+  )).rows[0]!;
+  const result = {
+    assignments: n(counts.assignments),
+    assignmentsCreated: n(counts.assignments_created),
+    scores: n(counts.scores),
+    finalScores: n(counts.final_scores),
+    draftScores: n(counts.draft_scores),
+    scoresUnlocked: n(counts.scores_unlocked),
+    auditActivity: n(counts.audit_activity),
+    sessions: n(counts.sessions),
+    duplicateReviews: n(counts.duplicate_reviews),
+    winners: n(counts.winners),
+    questionSets: n(counts.question_sets),
+    settingsChanges: n(counts.settings_changes),
+  };
+  const blockers = (Object.entries({
+    assignmentsCreated: result.assignmentsCreated,
+    scoresUnlocked: result.scoresUnlocked,
+    winners: result.winners,
+    questionSets: result.questionSets,
+    settingsChanges: result.settingsChanges,
+  }) as [JudgePurgeImpact["blockers"][number], number][]).filter(([, value]) => value > 0).map(([key]) => key);
+  return {
+    judge: { id: n(judge.id), name: judge.display_name, email: judge.email, judgeCode: judge.judge_code, deletedAt: asDate(judge.deleted_at).toISOString() },
+    counts: result,
+    canPurge: blockers.length === 0,
+    blockers,
+  };
 }
 
 export async function listJudges(db: Queryable): Promise<{ judges: JudgeRow[] }> {
@@ -433,28 +511,19 @@ export async function restoreJudge(db: DatabaseAdapter, now: Date, actor: { staf
   return { ok: true };
 }
 
-/**
- * Permanent delete of a soft-deleted judge who left no history. Refused when anything refers to the account: assignments, scores, anything the
- * judge did (every sign-in is an audit row that names the account, and the audit log is append-only), reviews decided, sets, settings or winners
- * they touched. Only the account, its profile and its sessions are removed. The audit row records the id and nothing personal.
- */
+/** Permanent purge after the impact review. Safe-to-remove judge-owned history is removed in one transaction; structural/public links stay blocked. */
 export async function purgeJudge(db: DatabaseAdapter, now: Date, actor: { staffId: number; requestId: string }, input: { judgeId: number }): Promise<{ ok: true }> {
   const id = input.judgeId;
-  const target = await db.query<{ id: unknown }>("SELECT id FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NOT NULL", [id]);
-  if (target.rows.length === 0) throw new AppError(404, "not_found", "Judge not found.");
-  const refs = (await db.query<{ n: unknown }>(
-    `SELECT (SELECT COUNT(*) FROM judge_assignments WHERE judge_id = ? OR assigned_by = ?)
-          + (SELECT COUNT(*) FROM scores WHERE judge_id = ? OR unlocked_by = ?)
-          + (SELECT COUNT(*) FROM audit_log WHERE actor_staff_id = ?)
-          + (SELECT COUNT(*) FROM winners WHERE approved_by = ?)
-          + (SELECT COUNT(*) FROM duplicate_reviews WHERE decided_by = ?)
-          + (SELECT COUNT(*) FROM question_sets WHERE created_by = ? OR published_by = ?)
-          + (SELECT COUNT(*) FROM event_settings WHERE updated_by = ?) AS n`,
-    [id, id, id, id, id, id, id, id, id, id],
-  )).rows[0];
-  if (n(refs?.n) > 0) throw new AppError(409, "judge_purge_blocked", "This judge has assignments, scores or recorded activity, so the account cannot be permanently deleted.");
+  const impact = await loadJudgePurgeImpact(db, id);
+  if (!impact.canPurge) throw new AppError(409, "judge_purge_blocked", "This judge is linked to records that must be reviewed before permanent deletion.");
 
   await db.transaction(async (tx) => {
+    await tx.query("INSERT INTO judge_purge_context (judge_id) VALUES (?)", [id]);
+    await tx.query("DELETE FROM duplicate_reviews WHERE decided_by = ?", [id]);
+    await tx.query("DELETE FROM scores WHERE judge_id = ?", [id]);
+    await tx.query("DELETE FROM judge_assignments WHERE judge_id = ?", [id]);
+    await tx.query("DELETE FROM audit_log WHERE actor_staff_id = ?", [id]);
+    await tx.query("DELETE FROM judge_purge_context WHERE judge_id = ?", [id]);
     await tx.query("DELETE FROM staff_sessions WHERE staff_id = ?", [id]);
     await tx.query("DELETE FROM judge_profiles WHERE user_id = ?", [id]);
     const gone = await tx.query("DELETE FROM staff_users WHERE id = ? AND role = 'judge' AND deleted_at IS NOT NULL", [id]);
