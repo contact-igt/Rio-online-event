@@ -13,7 +13,14 @@ export async function bundleFixture(entry: string, aliases: Record<string, strin
     onLog: (level, log, defaultHandler) => {
       if (log.code !== "MODULE_LEVEL_DIRECTIVE") defaultHandler(level, log); // "use client" has no meaning in this bundle
     },
-    transform: { define: { "process.env.NODE_ENV": '"production"' } },
+    transform: {
+      define: {
+        "process.env.NODE_ENV": '"production"',
+        "process.env.RIO_PLAYBACK_ENABLED": '"no"',
+        "process.env.R2_ACCOUNT_ID": '""',
+        "process.env": "{ NODE_ENV: 'production', RIO_PLAYBACK_ENABLED: 'no', R2_ACCOUNT_ID: '' }",
+      },
+    },
     plugins: [
       {
         name: "fixture-aliases",

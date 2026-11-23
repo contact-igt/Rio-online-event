@@ -26,17 +26,20 @@ export function ScoreForm(p: ScoreFormProps) {
   const [comments, setComments] = useState(p.comments ?? "");
   const inflight = useRef(false);
 
-  if (p.status === "final") {
+  const locallyFinal = state.kind === "saved" && state.final;
+  if (p.status === "final" || locallyFinal) {
+    const displayedMarks = locallyFinal ? marks : p.marks;
+    const displayedComments = locallyFinal ? comments.trim() : p.comments;
     return (
       <div className="space-y-2">
-        {state.kind === "saved" && state.final && (
+        {locallyFinal && (
           <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
             <Bilingual m={staff.judge.savedFinal} />
           </p>
         )}
         <div className="space-y-2 rounded-xl border-2 border-rio-navy/15 bg-white p-4">
-          <p className="font-display text-3xl font-bold tabular-nums text-rio-navy">{p.marks} <span className="text-base font-semibold text-rio-slate">/ {MAX_MARKS}</span></p>
-          {p.comments && <p className="whitespace-pre-wrap text-sm text-rio-ink">{p.comments}</p>}
+          <p className="font-display text-3xl font-bold tabular-nums text-rio-navy">{displayedMarks} <span className="text-base font-semibold text-rio-slate">/ {MAX_MARKS}</span></p>
+          {displayedComments && <p className="whitespace-pre-wrap text-sm text-rio-ink">{displayedComments}</p>}
           <p className="text-sm text-rio-slate">
             <Bilingual m={staff.judge.finalLocked} />
           </p>
@@ -54,7 +57,7 @@ export function ScoreForm(p: ScoreFormProps) {
     if (!result) return setState({ kind: "failed", message: E.network });
     if (!result.ok) return setState({ kind: "failed", message: E[result.code] ?? E.unavailable });
     setState({ kind: "saved", final: result.status === "final" });
-    router.refresh(); // the entry and the dashboard counts are read again from the server
+    if (result.status !== "final") router.refresh(); // final scores lock locally; the next page load reads the server state
   }
 
   const busy = state.kind === "saving";

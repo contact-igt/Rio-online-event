@@ -171,7 +171,7 @@ describe("final submission (RIO_FINALIZE_ENABLED) is enforced on the server and 
 
   it("the registration page offers final submission only once the video is attached and uploads are open, and never imports legacy submit code", () => {
     const page = get("app/events/[slug]/register/page.tsx");
-    expect(page).toContain("view?.video?.uploaded && editable && settings?.videoUploads");
+    expect(page).toContain("finish={{ hasVideo: view?.video?.uploaded === true, uploadsOpen: settings?.videoUploads === true }}");
     expect(page).not.toMatch(/lib\/submit\/(server|service)|process\.env\.RIO_FINALIZE_ENABLED/);
   });
 

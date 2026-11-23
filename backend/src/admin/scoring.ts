@@ -1,4 +1,5 @@
-import type { Queryable } from "../db/adapter.ts";
+import { writeAudit } from "../auth/audit.ts";
+import type { DatabaseAdapter, Queryable } from "../db/adapter.ts";
 import { AppError } from "../http/errors.ts";
 import { rankEntries } from "./ranking.ts";
 
@@ -115,4 +116,51 @@ export async function scoringOverview(db: Queryable): Promise<{ competitions: (C
     out.push({ ...r.competition, ...r.summary });
   }
   return { competitions: out };
+}
+
+/** Reopen one final score so the assigned judge can correct it. This is an administrator-only,
+ * explicitly audited operation; the database trigger requires both unlock columns to be set. */
+export async function unlockScore(
+  db: DatabaseAdapter,
+  now: Date,
+  actor: { staffId: number; requestId: string },
+  slug: string | null,
+  input: { entryCode: string; judgeCode: string },
+): Promise<{ ok: true; slug: string }> {
+  const target = (
+    await db.query<{ score_id: unknown; submission_id: unknown; judge_id: unknown; status: string; event_slug: string }>(
+      `SELECT sc.id AS score_id, sc.submission_id, sc.judge_id, sc.status, e.slug AS event_slug
+       FROM scores sc
+       JOIN submissions s ON s.id = sc.submission_id
+       JOIN events e ON e.id = s.event_id
+       JOIN judge_profiles p ON p.user_id = sc.judge_id
+       JOIN judge_assignments a ON a.judge_id = sc.judge_id AND a.submission_id = sc.submission_id
+       WHERE ${slug === null ? "1 = 1" : "e.slug = ?"} AND s.entry_code = ? AND p.judge_code = ?`,
+      slug === null ? [input.entryCode, input.judgeCode] : [slug, input.entryCode, input.judgeCode],
+    )
+  ).rows[0];
+
+  if (!target) throw new AppError(404, "score_not_found", "That judge score was not found.");
+  if (target.status !== "final") throw new AppError(409, "score_not_final", "Only a final score can be reopened.");
+
+  await db.transaction(async (tx) => {
+    const changed = await tx.query(
+      `UPDATE scores
+       SET status = 'draft', finalized_at = NULL, unlocked_by = ?, unlocked_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'final'`,
+      [actor.staffId, now, now, Number(target.score_id)],
+    );
+    if (changed.affectedRows !== 1) throw new AppError(409, "score_not_final", "Only a final score can be reopened.");
+    await writeAudit(tx, now, {
+      actorType: "staff",
+      actorStaffId: actor.staffId,
+      action: "admin.score_unlock",
+      entityType: "score",
+      entityId: Number(target.score_id),
+      requestId: actor.requestId,
+      details: { competition: slug, entryCode: input.entryCode, judgeCode: input.judgeCode },
+    });
+  });
+
+  return { ok: true, slug: target.event_slug };
 }

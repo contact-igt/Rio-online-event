@@ -35,11 +35,13 @@ describe("Scoring page refinement", () => {
     expect(detail).toContain('className="eyebrow mt-2"');
   });
 
-  it("reads real scoring data behind the administrator check and never edits scores", () => {
+  it("reads real scoring data behind the administrator check and only offers an explicit score reopen", () => {
     expect(page).toContain('requireStaff("admin")');
     expect(page).toContain("loadScoringOverview()");
     expect(detail).toContain("loadRanking(slug)");
-    expect(page + detail).not.toMatch(/saveScore|PUT|unlock/);
+    expect(page + detail).not.toMatch(/saveScore|PUT/);
+    expect(detail).toContain("unlockScoreAction");
+    expect(detail).toContain('name="confirm"');
   });
 });
 

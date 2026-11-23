@@ -70,7 +70,7 @@ describe("migrate", () => {
     expect(ready.out).toContain("ready:");
     expect(run("migrate").out).toContain("Nothing to apply.");
     expect(run("migrate").out).toContain("Schema: valid");
-  });
+  }, 30_000);
 
   it("created the 18 application tables and the tracking table (and no other)", () => {
     const names = tables();

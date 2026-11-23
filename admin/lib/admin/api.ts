@@ -165,6 +165,15 @@ export async function assignJudgeApi(slug: string, judgeId: number | string, csr
   });
 }
 
+export async function unassignJudgeApi(slug: string, judgeId: number | string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; removed: number }>(`/admin/competitions/${encodeURIComponent(slug)}/assign-judge/${encodeURIComponent(String(judgeId))}`, {
+    method: "DELETE",
+    cookie,
+    csrf,
+  });
+}
+
 
 export async function updateJudgeApi(judgeId: number | string, data: { email: string; displayName: string }, csrf?: string) {
   const cookie = await sessionCookieHeader();
@@ -215,6 +224,16 @@ export type CompetitionRanking = { competition: { slug: string; nameTa: string; 
 
 export const loadScoringOverview = () => get<ScoringOverview>("/admin/scoring");
 export const loadRanking = (slug: string) => get<CompetitionRanking>(`/admin/competitions/${encodeURIComponent(slug)}/ranking`);
+
+export async function unlockScoreApi(entryCode: string, judgeCode: string, csrf?: string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<{ ok: true; slug: string }>("/admin/scores/unlock", {
+    method: "POST",
+    body: { entryCode, judgeCode, confirm: true },
+    cookie,
+    csrf,
+  });
+}
 
 // ---- results (winners chosen by hand; public only after the Event Settings time) --------------------------------------------------------
 export type WinnerRow = { place: number; entryCode: string; childName: string; displayName: string; awardLabel: string | null; average: number | null; rank: number | null; approvedAt: string };

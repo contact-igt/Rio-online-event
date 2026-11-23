@@ -12,12 +12,12 @@ import {
   questionBody, reorderBody, reorderQuestions, updateQuestion,
 } from "./questions.ts";
 import {
-  assignJudgeToCompetition, deleteJudge, listDeletedJudges, purgeJudge, restoreJudge, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive,
+  assignJudgeToCompetition, deleteJudge, listDeletedJudges, purgeJudge, restoreJudge, listJudges, provisionJudge, provisionJudgeSchema, resetJudgePassword, setActiveSchema, setJudgeActive, unassignJudgeFromCompetition,
   updateJudge, updateJudgeSchema,
 } from "./judges.ts";
 import { deleteRegistrationByAdmin, mintAdminPlaybackUrl, purgeRegistrationByAdmin, deletedListQuery, editBody, listDeletedRegistrations, listQuery, listRegistrations, loadRegistration, restoreRegistrationByAdmin, updateRegistrationByAdmin } from "./registrations.ts";
 import { loadSettings, patchBody, present, SettingsInvalid, updateSettings } from "./settings.ts";
-import { loadRanking, scoringOverview } from "./scoring.ts";
+import { loadRanking, scoringOverview, unlockScore } from "./scoring.ts";
 import { approveBody, approveWinner, loadWinners, removeWinner, winnersOverview } from "./winners.ts";
 
 // Mounted under /api/v1/admin. Administrators only: requireStaff checks the origin, the session, the role (read from the database) and, for every
@@ -39,6 +39,12 @@ const idOf = (value: unknown): number => {
   if (typeof value !== "string" || !/^[1-9][0-9]{0,11}$/u.test(value)) throw notFound();
   return Number(value);
 };
+
+const unlockScoreBody = z.strictObject({
+  entryCode: z.string().regex(/^[A-Z0-9]{6,16}$/u),
+  judgeCode: z.string().regex(/^JDG-[A-Z0-9]{1,16}$/u),
+  confirm: z.literal(true),
+});
 
 /** Strict parse. A failure reports field codes only, never the text that was typed. */
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
@@ -128,6 +134,14 @@ export function adminRouter(deps: AuthDeps, video: VideoStore | null = null): Ro
   router.get("/scoring", ...admin, guarded(async (_req, res) => void res.json(await scoringOverview(deps.db))));
   router.get("/results", ...admin, guarded(async (_req, res) => void res.json(await winnersOverview(deps.db, now()))));
   router.get("/competitions/:slug/ranking", ...admin, guarded(async (req, res) => void res.json(await loadRanking(deps.db, slugOf(req.params.slug)))));
+  router.post("/competitions/:slug/scores/unlock", ...admin, guarded(async (req, res) => {
+    const input = parse(unlockScoreBody, req.body ?? {});
+    res.json(await unlockScore(deps.db, now(), actor(res), slugOf(req.params.slug), input));
+  }));
+  router.post("/scores/unlock", ...admin, guarded(async (req, res) => {
+    const input = parse(unlockScoreBody, req.body ?? {});
+    res.json(await unlockScore(deps.db, now(), actor(res), null, input));
+  }));
   router.get("/competitions/:slug/winners", ...admin, guarded(async (req, res) => void res.json(await loadWinners(deps.db, now(), slugOf(req.params.slug)))));
   router.post("/competitions/:slug/winners", ...admin, guarded(async (req, res) => {
     res.status(201).json(await approveWinner(deps.db, now(), actor(res), slugOf(req.params.slug), parse(approveBody, req.body ?? {})));
@@ -203,6 +217,9 @@ export function adminRouter(deps: AuthDeps, video: VideoStore | null = null): Ro
     const rawId = (req.body as { judgeId?: unknown } | undefined)?.judgeId;
     const judgeId = idOf(typeof rawId === "number" ? String(rawId) : rawId);
     res.json(await assignJudgeToCompetition(deps.db, now(), actor(res), { slug: slugOf(req.params.slug), judgeId }));
+  }));
+  router.delete("/competitions/:slug/assign-judge/:judgeId", ...admin, guarded(async (req, res) => {
+    res.json(await unassignJudgeFromCompetition(deps.db, now(), actor(res), { slug: slugOf(req.params.slug), judgeId: idOf(req.params.judgeId) }));
   }));
 
   // Staff management is for the Super Admin only. It is read-only for now; creating and changing accounts stays on the command line.

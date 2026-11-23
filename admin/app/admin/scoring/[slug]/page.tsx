@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unlockScoreAction } from "@/app/admin/scoring/actions";
 import { Icon } from "@/components/ui/icon";
 import { loadRanking, type RankingRow } from "@/lib/admin/api";
 import { requireStaff } from "@/lib/staff/auth";
@@ -26,6 +27,17 @@ function JudgeMarks({ row }: { row: RankingRow }) {
           <span className="font-semibold text-rio-navy">{j.judgeName}</span>{" "}
           <span className="tabular-nums text-rio-navy">{j.marks === null ? "–" : `${marks(j.marks)} / 10`}</span>{" "}
           <span className="text-rio-slate">({judgeState[j.status]})</span>
+          {j.status === "final" && (
+            <form action={unlockScoreAction} className="mt-1 rounded-lg bg-rio-blush p-2">
+              <input type="hidden" name="entryCode" value={row.entryCode} />
+              <input type="hidden" name="judgeCode" value={j.judgeCode} />
+              <label className="flex items-start gap-2 text-xs font-medium text-rio-navy">
+                <input type="checkbox" name="confirm" value="yes" required className="mt-0.5 size-4 accent-rio-rose" />
+                <span>Reopen this final score so the judge can correct it.</span>
+              </label>
+              <button type="submit" className="btn btn-outline mt-2 min-h-9 !px-3 !py-1 text-xs">Reopen score</button>
+            </form>
+          )}
           {j.comments && <span className="mt-0.5 block whitespace-pre-wrap text-rio-slate [overflow-wrap:anywhere]">“{j.comments}”</span>}
         </li>
       ))}
@@ -104,9 +116,10 @@ function Group({ title, ta, note, rows, ranked = false }: { title: string; ta: s
   );
 }
 
-export default async function AdminRankingPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function AdminRankingPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ notice?: string; error?: string }> }) {
   await requireStaff("admin");
   const { slug } = await params;
+  const query = (await searchParams) ?? {};
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) notFound();
   const loaded = await loadRanking(slug);
   if (!loaded.ok && loaded.reason === "not_found") notFound();

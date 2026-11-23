@@ -37,6 +37,11 @@ const calls = (page: Page) => page.evaluate(() => window.__judgeCalls ?? []);
 
 test.describe("private video", () => {
   test("no video address is in the page until the judge asks; then a link from the server is used", async ({ page }) => {
+    let releaseVideoRequest = () => {};
+    await page.route("https://r2.test/signed-video*", async (route) => {
+      await new Promise<void>((resolve) => { releaseVideoRequest = resolve; });
+      await route.abort();
+    });
     await open(page);
     expect(await page.locator("video").count()).toBe(0);
     expect(await page.locator("#root").innerHTML()).not.toMatch(/r2\.test|videos\//); // the rendered page, not the test bundle
@@ -46,7 +51,8 @@ test.describe("private video", () => {
     await expect(video).toHaveAttribute("controls", "");
     expect(await calls(page)).toEqual([{ fn: "playback", input: { entryId: "bbbbbbbb-0000-4000-8000-0000000000b1" } }]);
     await expect(page.getByRole("button", { name: /Reload video/ })).toBeVisible();
-    await expect(page.getByText(/5 minutes/)).toBeVisible();
+    await expect(page.getByText(/video link works for 5 minutes only/)).toBeVisible();
+    releaseVideoRequest();
   });
 
   test("the request is sent once even if the button is hammered", async ({ page }) => {
@@ -80,7 +86,7 @@ test.describe("private video", () => {
     await open(page, "", { playback: ["throw"] });
     await page.getByRole("button", { name: /Load video/ }).click();
     await expect(page.locator("#playback-error")).toContainText("connection dropped");
-    await page.getByRole("button", { name: /Load video/ }).click();
+    await page.getByRole("button", { name: /Reload video/ }).click();
     await expect(page.locator("video")).toHaveCount(1);
   });
 
@@ -111,7 +117,7 @@ test.describe("scoring", () => {
     await expect(page.getByRole("status")).toContainText("Final score saved");
     const scores = (await calls(page)).filter((c) => c.fn === "score");
     expect(scores.at(-1)!.input).toMatchObject({ final: true, marks: "72.5" });
-    expect(await page.evaluate(() => window.__refreshed)).toBe(2);
+    expect(await page.evaluate(() => window.__refreshed)).toBe(1);
   });
 
   test("an existing draft is shown and can be changed", async ({ page }) => {
@@ -129,7 +135,7 @@ test.describe("scoring", () => {
   });
 
   const errors: [string, RegExp][] = [
-    ["invalid", /Enter marks from 0 to 100/],
+    ["invalid", /Enter marks from 0 to 10/],
     ["marksRequired", /needs marks/],
     ["locked", /already final/],
     ["notAllowed", /cannot score this entry/],
@@ -180,7 +186,7 @@ test.describe("phone-sized screen", () => {
     test.skip(!css, "needs the built stylesheet: run `npm run build` first");
     await open(page, "", { score: [{ ok: false, code: "conflict" }] });
     await page.getByRole("button", { name: /Load video/ }).tap();
-    await expect(page.locator("video")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Reload video/ })).toBeVisible();
     await page.getByLabel(/Marks/).fill("66");
     await page.getByRole("button", { name: /Save draft/ }).tap();
     await expect(page.locator("#score-error")).toBeVisible();
