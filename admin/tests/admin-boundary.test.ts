@@ -52,7 +52,7 @@ describe("judge actions", () => {
 
   it("exports exactly these actions, as server actions that never log", () => {
     expect(actions).toMatch(/^"use server";/);
-    expect([...actions.matchAll(/^export async function (\w+)/gm)].map((m) => m[1])).toEqual(["inviteJudge", "provisionJudge", "resetJudgePassword", "setJudgeActive", "updateJudge", "deleteJudge", "restoreJudge", "purgeJudge"]);
+    expect([...actions.matchAll(/^export async function (\w+)/gm)].map((m) => m[1])).toEqual(["inviteJudge", "provisionJudge", "resetJudgePassword", "setJudgeActive", "updateJudge", "deleteJudge", "loadJudgePurgeImpact", "restoreJudge", "purgeJudge"]);
     expect(actions).not.toMatch(/console\./);
   });
 

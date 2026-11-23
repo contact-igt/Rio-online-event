@@ -191,6 +191,15 @@ export async function purgeRegistrationApi(entryCode: string, csrf?: string) {
 }
 
 export type DeletedJudgeRow = { id: number; name: string; email: string; judgeCode: string; deletedAt: string };
+export type JudgePurgeImpact = {
+  judge: DeletedJudgeRow;
+  counts: {
+    assignments: number; assignmentsCreated: number; scores: number; finalScores: number; draftScores: number; scoresUnlocked: number;
+    auditActivity: number; sessions: number; duplicateReviews: number; winners: number; questionSets: number; settingsChanges: number;
+  };
+  canPurge: boolean;
+  blockers: string[];
+};
 
 export const loadDeletedJudges = async (): Promise<Loaded<DeletedJudgeRow[]>> => {
   const loaded = await get<{ judges: DeletedJudgeRow[] }>("/admin/judges/deleted");
@@ -202,9 +211,14 @@ export async function restoreJudgeApi(judgeId: number | string, csrf?: string) {
   return callApi<{ ok: true }>(`/admin/judges/${judgeId}/restore`, { method: "POST", cookie, csrf });
 }
 
+export async function loadJudgePurgeImpactApi(judgeId: number | string) {
+  const cookie = await sessionCookieHeader();
+  return callApi<JudgePurgeImpact>(`/admin/judges/${judgeId}/purge-impact`, { method: "GET", cookie });
+}
+
 export async function purgeJudgeApi(judgeId: number | string, csrf?: string) {
   const cookie = await sessionCookieHeader();
-  return callApi<{ ok: true }>(`/admin/judges/${judgeId}/permanent`, { method: "DELETE", cookie, csrf });
+  return callApi<{ ok: true }>(`/admin/judges/${judgeId}/permanent`, { method: "DELETE", body: { confirm: true }, cookie, csrf });
 }
 
 export async function requestRegistrationPlaybackApi(entryCode: string, csrf?: string) {
